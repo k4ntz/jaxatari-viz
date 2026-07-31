@@ -64,7 +64,7 @@ const LogsExplorer: React.FC<LogsExplorerProps> = ({ selectedRuns }) => {
             placeholder="Grep logs..." 
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            className="w-80 bg-[rgba(0,0,0,0.3)] border border-[#2e334d] rounded-xl pl-10 pr-4 py-2.5 text-white focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all shadow-inner"
+            className="log-search-input"
           />
         </div>
       </div>
@@ -87,11 +87,11 @@ const LogsExplorer: React.FC<LogsExplorerProps> = ({ selectedRuns }) => {
                   Run: <span className="text-white bg-[rgba(255,255,255,0.05)] px-2 py-0.5 rounded border border-[#2e334d] normal-case tracking-normal">{runId}</span>
                 </h2>
               </div>
-              <div className="bg-[rgba(0,0,0,0.4)] rounded-lg font-mono text-xs leading-relaxed text-slate-300 overflow-y-auto border border-[#2e334d] flex-1 custom-scrollbar p-0">
+              <div className="log-terminal-container">
                 {searchTerm && !filteredLog ? (
                   <div className="text-slate-500 italic p-4">No matching lines found for "{searchTerm}".</div>
                 ) : (
-                  <pre className="whitespace-pre-wrap break-words !bg-transparent !border-none !p-4 !m-0 text-emerald-100">
+                  <pre className="log-pre-block">
                     {filteredLog || 'No logs available.'}
                   </pre>
                 )}

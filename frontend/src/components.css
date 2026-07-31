@@ -1,0 +1,100 @@
+/* Shared UI Component CSS Classes & Variables */
+
+:root {
+  /* Terminal / Log Explorer Variables */
+  --log-bg-container: rgba(0, 0, 0, 0.4);
+  --log-border-color: var(--border-color);
+  --log-text-color: #d1fae5; /* emerald-100 */
+  --log-header-bg: #12141F;
+  --log-search-bg: rgba(0, 0, 0, 0.3);
+  --log-search-border: var(--border-color);
+  --log-search-focus-ring: rgba(16, 185, 129, 0.2);
+
+  /* Sidebar Variables */
+  --sidebar-bg: #16192b;
+  --sidebar-border: var(--border-color);
+  --sidebar-nav-active-bg: rgba(99, 102, 241, 0.1);
+  --sidebar-nav-active-color: var(--accent-1);
+  --sidebar-nav-hover-bg: rgba(255, 255, 255, 0.03);
+
+  /* General Cards & Group Headers */
+  --card-header-bg: var(--bg-panel-solid);
+  --group-select-bg: #0f111a;
+  --group-select-border: var(--border-color);
+}
+
+/* Terminal / Log Explorer Classes */
+.log-explorer-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--log-border-color);
+  flex-shrink: 0;
+}
+
+.log-search-input {
+  width: 20rem;
+  background-color: var(--log-search-bg);
+  border: 1px solid var(--log-search-border);
+  border-radius: var(--radius-md);
+  padding: 0.625rem 1rem 0.625rem 2.5rem;
+  color: #ffffff;
+  outline: none;
+  transition: all var(--transition-fast);
+}
+
+.log-search-input:focus {
+  border-color: #10b981;
+  box-shadow: 0 0 0 2px var(--log-search-focus-ring);
+}
+
+.log-terminal-container {
+  background-color: var(--log-bg-container);
+  border-radius: var(--radius-md);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  overflow-y: auto;
+  border: 1px solid var(--log-border-color);
+  flex: 1;
+}
+
+.log-pre-block {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  background: transparent !important;
+  border: none !important;
+  padding: 1rem !important;
+  margin: 0 !important;
+  color: var(--log-text-color);
+}
+
+/* Group By Dropdown Bar */
+.group-by-selector-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background-color: rgba(0, 0, 0, 0.2);
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  width: fit-content;
+}
+
+.group-by-dropdown {
+  background-color: var(--group-select-bg);
+  border: 1px solid var(--group-select-border);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  border-radius: var(--radius-sm);
+  padding: 0.375rem 0.75rem;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.group-by-dropdown:focus {
+  border-color: var(--accent-1);
+}

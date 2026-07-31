@@ -1,0 +1,134 @@
+/* Filter Chip / Pill Component CSS Classes & Variables */
+
+:root {
+  /* Layout & Geometry */
+  --filter-chip-radius: 9999px;          /* Border radius for filter pills */
+  --filter-chip-padding-x: 1rem;         /* Horizontal padding */
+  --filter-chip-padding-y: 0.5rem;       /* Vertical padding */
+  --filter-chip-gap: 0.75rem;            /* Gap between pills in group */
+  --filter-chip-margin: 0.125rem;        /* Outer pill margin */
+  --filter-chip-font-size: 0.875rem;     /* Text size */
+  --filter-chip-font-weight: 600;        /* Font weight */
+  
+  /* Deselected Pill Variables */
+  --filter-chip-deselected-bg: rgba(0, 0, 0, 0.15);
+  --filter-chip-deselected-border: rgba(46, 51, 77, 0.4);
+  --filter-chip-deselected-text-color: #64748b; /* slate-500 */
+  --filter-chip-deselected-opacity: 0.30;
+  --filter-chip-deselected-hover-opacity: 0.50;
+  --filter-chip-deselected-indicator-bg: #475569; /* slate-600 */
+  
+  /* Selected Active Pill Variables (General) */
+  --filter-chip-active-opacity: 1.0;
+
+  /* Indigo Variant (Games) */
+  --filter-chip-indigo-bg: #818cf8; /* Solid vibrant indigo */
+  --filter-chip-indigo-border: #a5b4fc;
+  --filter-chip-indigo-text-color: #0f172a; /* Dark text for high contrast on active pill */
+  --filter-chip-indigo-indicator-bg: #1e1b4b;
+  --filter-chip-indigo-shadow: 0 0 14px rgba(129, 140, 248, 0.4);
+
+  /* Purple Variant (Models) */
+  --filter-chip-purple-bg: #c084fc; /* Solid vibrant purple */
+  --filter-chip-purple-border: #e9d5ff;
+  --filter-chip-purple-text-color: #0f172a; /* Dark text for high contrast on active pill */
+  --filter-chip-purple-indicator-bg: #3b0764;
+  --filter-chip-purple-shadow: 0 0 14px rgba(192, 132, 252, 0.4);
+
+  /* Emerald Variant (Methods) */
+  --filter-chip-emerald-bg: #34d399; /* Solid vibrant emerald */
+  --filter-chip-emerald-border: #a7f3d0;
+  --filter-chip-emerald-text-color: #064e3b; /* Dark text for high contrast on active pill */
+  --filter-chip-emerald-indicator-bg: #022c22;
+  --filter-chip-emerald-shadow: 0 0 14px rgba(52, 211, 153, 0.4);
+}
+
+.filter-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--filter-chip-gap);
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: var(--filter-chip-padding-y) var(--filter-chip-padding-x);
+  border-radius: var(--filter-chip-radius);
+  border-width: 1px;
+  border-style: solid;
+  font-size: var(--filter-chip-font-size);
+  font-weight: var(--filter-chip-font-weight);
+  margin: var(--filter-chip-margin);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  user-select: none;
+}
+
+/* Deselected state */
+.filter-chip:not(.active) {
+  background-color: var(--filter-chip-deselected-bg);
+  border-color: var(--filter-chip-deselected-border);
+  color: var(--filter-chip-deselected-text-color);
+  opacity: var(--filter-chip-deselected-opacity);
+}
+
+.filter-chip:not(.active) .filter-chip-indicator {
+  background-color: var(--filter-chip-deselected-indicator-bg);
+}
+
+.filter-chip:not(.active):hover {
+  opacity: var(--filter-chip-deselected-hover-opacity);
+  border-color: var(--filter-chip-deselected-text-color);
+}
+
+/* Active variant - Games (Indigo) */
+.filter-chip.active-indigo {
+  background-color: var(--filter-chip-indigo-bg);
+  border-color: var(--filter-chip-indigo-border);
+  color: var(--filter-chip-indigo-text-color);
+  opacity: var(--filter-chip-active-opacity);
+  box-shadow: var(--filter-chip-indigo-shadow);
+}
+.filter-chip.active-indigo .filter-chip-indicator {
+  background-color: var(--filter-chip-indigo-indicator-bg);
+  box-shadow: 0 0 4px var(--filter-chip-indigo-border);
+}
+
+/* Active variant - Models (Purple) */
+.filter-chip.active-purple {
+  background-color: var(--filter-chip-purple-bg);
+  border-color: var(--filter-chip-purple-border);
+  color: var(--filter-chip-purple-text-color);
+  opacity: var(--filter-chip-active-opacity);
+  box-shadow: var(--filter-chip-purple-shadow);
+}
+.filter-chip.active-purple .filter-chip-indicator {
+  background-color: var(--filter-chip-purple-indicator-bg);
+  box-shadow: 0 0 4px var(--filter-chip-purple-border);
+}
+
+/* Active variant - Methods (Emerald) */
+.filter-chip.active-emerald {
+  background-color: var(--filter-chip-emerald-bg);
+  border-color: var(--filter-chip-emerald-border);
+  color: var(--filter-chip-emerald-text-color);
+  opacity: var(--filter-chip-active-opacity);
+  box-shadow: var(--filter-chip-emerald-shadow);
+}
+.filter-chip.active-emerald .filter-chip-indicator {
+  background-color: var(--filter-chip-emerald-indicator-bg);
+  box-shadow: 0 0 4px var(--filter-chip-emerald-border);
+}
+
+.filter-chip-indicator {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+.filter-chip-label {
+  text-align: center;
+}

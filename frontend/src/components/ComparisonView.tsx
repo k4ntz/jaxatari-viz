@@ -390,7 +390,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
 
       <div className="flex flex-col gap-10">
         {/* Top Filters Bar */}
-        <div className="bg-[#16192b] border border-[#2e334d] p-6 rounded-2xl flex flex-col gap-6">
+        <div className="bg-[#16192b] border border-[#2e334d] p-6 rounded-2xl flex flex-col gap-6 mb-4">
           <div className="flex items-center justify-between border-b border-[#2e334d] pb-4">
             <div className="flex items-center gap-2">
               <Filter className="w-5 h-5 text-indigo-400" />
@@ -409,30 +409,26 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
             </button>
           </div>
 
-          <div className="flex flex-wrap gap-x-12 gap-y-6 items-start">
+          <div className="flex flex-col gap-6">
             {games.length > 0 && (
-              <div className="flex flex-col gap-3 min-w-[200px]">
+              <div className="flex flex-col gap-3 w-full">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Games</span>
-                  <span className="badge text-[10px] py-0 px-1.5 bg-indigo-500/20 border-indigo-500/30 text-indigo-300">
+                  <span className="badge text-[11px] py-0.5 px-2 bg-indigo-500/20 border-indigo-500/30 text-indigo-300">
                     {selectedGames.size} / {games.length}
                   </span>
                 </div>
-                <div className="flex flex-wrap gap-2.5">
+                <div className="filter-chip-group">
                   {games.map(g => {
                     const active = selectedGames.has(g);
                     return (
                       <button
                         key={g}
                         onClick={() => toggleFilter(setSelectedGames, g)}
-                        className={`text-xs font-medium px-4 py-2 rounded-xl border transition-all flex items-center gap-2 ${
-                          active
-                            ? 'bg-indigo-600/25 border-indigo-500/60 text-indigo-200 shadow-[0_0_12px_rgba(99,102,241,0.25)]'
-                            : 'bg-[rgba(255,255,255,0.03)] border-[#2e334d]/60 text-slate-500 hover:text-slate-300 hover:border-slate-600 hover:bg-[rgba(255,255,255,0.06)] opacity-60 hover:opacity-100'
-                        }`}
+                        className={`filter-chip ${active ? 'active active-indigo' : ''}`}
                       >
-                        <span className={`w-2 h-2 rounded-full ${active ? 'bg-indigo-400' : 'bg-slate-600'}`} />
-                        <span>{g}</span>
+                        <span className={`filter-chip-indicator ${active ? 'bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.8)]' : 'bg-slate-600'}`} />
+                        <span className="filter-chip-label">{g}</span>
                       </button>
                     );
                   })}
@@ -441,28 +437,24 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
             )}
 
             {models.length > 0 && (
-              <div className="flex flex-col gap-3 min-w-[220px]">
+              <div className="flex flex-col gap-3 w-full">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Models</span>
-                  <span className="badge text-[10px] py-0 px-1.5 bg-purple-500/20 border-purple-500/30 text-purple-300">
+                  <span className="badge text-[11px] py-0.5 px-2 bg-purple-500/20 border-purple-500/30 text-purple-300">
                     {selectedModels.size} / {models.length}
                   </span>
                 </div>
-                <div className="flex flex-wrap gap-2.5">
+                <div className="filter-chip-group">
                   {models.map(m => {
                     const active = selectedModels.has(m);
                     return (
                       <button
                         key={m}
                         onClick={() => toggleFilter(setSelectedModels, m)}
-                        className={`text-xs font-medium px-4 py-2 rounded-xl border transition-all flex items-center gap-2 ${
-                          active
-                            ? 'bg-purple-600/25 border-purple-500/60 text-purple-200 shadow-[0_0_12px_rgba(168,85,247,0.25)]'
-                            : 'bg-[rgba(255,255,255,0.03)] border-[#2e334d]/60 text-slate-500 hover:text-slate-300 hover:border-slate-600 hover:bg-[rgba(255,255,255,0.06)] opacity-60 hover:opacity-100'
-                        }`}
+                        className={`filter-chip ${active ? 'active active-purple' : ''}`}
                       >
-                        <span className={`w-2 h-2 rounded-full ${active ? 'bg-purple-400' : 'bg-slate-600'}`} />
-                        <span>{m}</span>
+                        <span className={`filter-chip-indicator ${active ? 'bg-purple-400 shadow-[0_0_6px_rgba(168,85,247,0.8)]' : 'bg-slate-600'}`} />
+                        <span className="filter-chip-label">{m}</span>
                       </button>
                     );
                   })}
@@ -471,28 +463,24 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
             )}
 
             {methods.length > 0 && (
-              <div className="flex flex-col gap-3 min-w-[200px]">
+              <div className="flex flex-col gap-3 w-full">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Methods</span>
-                  <span className="badge text-[10px] py-0 px-1.5 bg-emerald-500/20 border-emerald-500/30 text-emerald-300">
+                  <span className="badge text-[11px] py-0.5 px-2 bg-emerald-500/20 border-emerald-500/30 text-emerald-300">
                     {selectedMethods.size} / {methods.length}
                   </span>
                 </div>
-                <div className="flex flex-wrap gap-2.5">
+                <div className="filter-chip-group">
                   {methods.map(method => {
                     const active = selectedMethods.has(method);
                     return (
                       <button
                         key={method}
                         onClick={() => toggleFilter(setSelectedMethods, method)}
-                        className={`text-xs font-medium px-4 py-2 rounded-xl border transition-all flex items-center gap-2 ${
-                          active
-                            ? 'bg-emerald-600/25 border-emerald-500/60 text-emerald-200 shadow-[0_0_12px_rgba(16,185,129,0.25)]'
-                            : 'bg-[rgba(255,255,255,0.03)] border-[#2e334d]/60 text-slate-500 hover:text-slate-300 hover:border-slate-600 hover:bg-[rgba(255,255,255,0.06)] opacity-60 hover:opacity-100'
-                        }`}
+                        className={`filter-chip ${active ? 'active active-emerald' : ''}`}
                       >
-                        <span className={`w-2 h-2 rounded-full ${active ? 'bg-emerald-400' : 'bg-slate-600'}`} />
-                        <span>{method}</span>
+                        <span className={`filter-chip-indicator ${active ? 'bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.8)]' : 'bg-slate-600'}`} />
+                        <span className="filter-chip-label">{method}</span>
                       </button>
                     );
                   })}
@@ -502,17 +490,31 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
           </div>
         </div>
 
-        <div className="flex items-center gap-4 bg-[rgba(0,0,0,0.2)] p-4 rounded-xl border border-[#2e334d] w-fit">
-          <span className="text-sm font-medium text-slate-400">Group distributions by:</span>
-          <select 
-            value={groupBy} 
-            onChange={(e) => setGroupBy(e.target.value)}
-            className="bg-[#0f111a] border border-[#2e334d] text-slate-300 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-indigo-500 transition-colors"
-          >
-            {availableGroupKeys.map(key => (
-              <option key={key} value={key}>{key}</option>
-            ))}
-          </select>
+        <div className="bg-[#16192b] border border-[#2e334d] p-6 rounded-2xl flex flex-col gap-6 mb-4">
+          <div className="flex items-center justify-between border-b border-[#2e334d] pb-4">
+            <div className="flex items-center gap-2">
+              <BarChart2 className="w-5 h-5 text-indigo-400" />
+              <h2 className="text-base font-bold text-white tracking-wide">Group Distributions By</h2>
+            </div>
+            <span className="badge text-[11px] py-0.5 px-2 bg-indigo-500/20 border-indigo-500/30 text-indigo-300">
+              Active: {groupBy}
+            </span>
+          </div>
+          <div className="filter-chip-group">
+            {availableGroupKeys.map(key => {
+              const active = groupBy === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setGroupBy(key)}
+                  className={`filter-chip ${active ? 'active active-indigo' : ''}`}
+                >
+                  <span className={`filter-chip-indicator ${active ? 'bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.8)]' : 'bg-slate-600'}`} />
+                  <span className="filter-chip-label">{key}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {Object.keys(runsByGame).length > 0 && Object.keys(baselinesMap).length > 0 && (
