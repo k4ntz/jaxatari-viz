@@ -418,20 +418,20 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
                     {selectedGames.size} / {games.length}
                   </span>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2.5">
                   {games.map(g => {
                     const active = selectedGames.has(g);
                     return (
                       <button
                         key={g}
                         onClick={() => toggleFilter(setSelectedGames, g)}
-                        className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 ${
+                        className={`text-xs font-medium px-4 py-2 rounded-xl border transition-all flex items-center gap-2 ${
                           active
-                            ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-200 shadow-[0_0_10px_rgba(99,102,241,0.2)]'
-                            : 'bg-[rgba(0,0,0,0.2)] border-[#2e334d] text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                            ? 'bg-indigo-600/25 border-indigo-500/60 text-indigo-200 shadow-[0_0_12px_rgba(99,102,241,0.25)]'
+                            : 'bg-[rgba(255,255,255,0.03)] border-[#2e334d]/60 text-slate-500 hover:text-slate-300 hover:border-slate-600 hover:bg-[rgba(255,255,255,0.06)] opacity-60 hover:opacity-100'
                         }`}
                       >
-                        <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-indigo-400' : 'bg-slate-600'}`} />
+                        <span className={`w-2 h-2 rounded-full ${active ? 'bg-indigo-400' : 'bg-slate-600'}`} />
                         <span>{g}</span>
                       </button>
                     );
@@ -448,20 +448,20 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
                     {selectedModels.size} / {models.length}
                   </span>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2.5">
                   {models.map(m => {
                     const active = selectedModels.has(m);
                     return (
                       <button
                         key={m}
                         onClick={() => toggleFilter(setSelectedModels, m)}
-                        className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 ${
+                        className={`text-xs font-medium px-4 py-2 rounded-xl border transition-all flex items-center gap-2 ${
                           active
-                            ? 'bg-purple-600/20 border-purple-500/50 text-purple-200 shadow-[0_0_10px_rgba(168,85,247,0.2)]'
-                            : 'bg-[rgba(0,0,0,0.2)] border-[#2e334d] text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                            ? 'bg-purple-600/25 border-purple-500/60 text-purple-200 shadow-[0_0_12px_rgba(168,85,247,0.25)]'
+                            : 'bg-[rgba(255,255,255,0.03)] border-[#2e334d]/60 text-slate-500 hover:text-slate-300 hover:border-slate-600 hover:bg-[rgba(255,255,255,0.06)] opacity-60 hover:opacity-100'
                         }`}
                       >
-                        <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-purple-400' : 'bg-slate-600'}`} />
+                        <span className={`w-2 h-2 rounded-full ${active ? 'bg-purple-400' : 'bg-slate-600'}`} />
                         <span>{m}</span>
                       </button>
                     );
@@ -478,20 +478,20 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
                     {selectedMethods.size} / {methods.length}
                   </span>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2.5">
                   {methods.map(method => {
                     const active = selectedMethods.has(method);
                     return (
                       <button
                         key={method}
                         onClick={() => toggleFilter(setSelectedMethods, method)}
-                        className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 ${
+                        className={`text-xs font-medium px-4 py-2 rounded-xl border transition-all flex items-center gap-2 ${
                           active
-                            ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-200 shadow-[0_0_10px_rgba(16,185,129,0.2)]'
-                            : 'bg-[rgba(0,0,0,0.2)] border-[#2e334d] text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                            ? 'bg-emerald-600/25 border-emerald-500/60 text-emerald-200 shadow-[0_0_12px_rgba(16,185,129,0.25)]'
+                            : 'bg-[rgba(255,255,255,0.03)] border-[#2e334d]/60 text-slate-500 hover:text-slate-300 hover:border-slate-600 hover:bg-[rgba(255,255,255,0.06)] opacity-60 hover:opacity-100'
                         }`}
                       >
-                        <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                        <span className={`w-2 h-2 rounded-full ${active ? 'bg-emerald-400' : 'bg-slate-600'}`} />
                         <span>{method}</span>
                       </button>
                     );
