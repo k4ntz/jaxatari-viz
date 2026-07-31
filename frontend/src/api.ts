@@ -29,6 +29,21 @@ export interface BaselineInfo {
   random: number;
 }
 
+export interface EnvironmentInfo {
+  id: string;
+  name: string;
+  category: string;
+  status: string;
+  mods_count: number;
+  has_gif: boolean;
+  gif_url: string | null;
+}
+
+export const fetchEnvironments = async (): Promise<EnvironmentInfo[]> => {
+  const response = await axios.get(`${API_BASE}/environments`);
+  return response.data.environments;
+};
+
 export const fetchBaselines = async (): Promise<BaselineInfo[]> => {
   const response = await axios.get(`${API_BASE}/baselines`);
   return response.data.data;

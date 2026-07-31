@@ -6,6 +6,7 @@ import { Toggle } from './Toggle';
 
 interface ComparisonProps {
   selectedRuns: string[];
+  setSelectedRuns?: React.Dispatch<React.SetStateAction<string[]>>;
   theme?: string;
 }
 

@@ -18,7 +18,8 @@ const VideoPlayer: React.FC<{ runId: string; iter: number }> = ({ runId, iter })
     let isMounted = true;
     checkRunVideo(runId, iter).then(status => {
       if (isMounted && status.exists && status.video_url) {
-        setVideoUrl(`http://localhost:8000${status.video_url}`);
+        const fullUrl = status.video_url.startsWith('http') ? status.video_url : `http://localhost:8000${status.video_url}`;
+        setVideoUrl(fullUrl);
       }
     }).catch(() => {});
     return () => { isMounted = false; };
@@ -29,9 +30,11 @@ const VideoPlayer: React.FC<{ runId: string; iter: number }> = ({ runId, iter })
     setError(null);
     try {
       const url = await renderRunVideo(runId, iter);
-      setVideoUrl(`http://localhost:8000${url}`);
+      const fullUrl = url.startsWith('http') ? url : `http://localhost:8000${url}`;
+      setVideoUrl(fullUrl);
     } catch (e: any) {
-      setError('Failed to render video.');
+      const detail = e.response?.data?.detail || e.message || 'Failed to render video.';
+      setError(`Failed to render video: ${detail}`);
     } finally {
       setLoading(false);
     }
@@ -52,7 +55,11 @@ const VideoPlayer: React.FC<{ runId: string; iter: number }> = ({ runId, iter })
           <Loader2 className="w-4 h-4 animate-spin" /> Rendering rollout video frame-by-frame...
         </div>
       )}
-      {error && <div className="text-red-400 text-xs my-1">{error}</div>}
+      {error && (
+        <div className="text-red-400 text-xs my-1 bg-red-500/10 border border-red-500/20 p-2 rounded-lg break-words max-w-xl whitespace-pre-wrap">
+          {error}
+        </div>
+      )}
       {videoUrl && (
         <div className="mt-3 rounded-xl overflow-hidden border border-[#2e334d] bg-black shadow-lg" style={{ width: '280px', maxWidth: '100%' }}>
           <video src={videoUrl} controls autoPlay className="rounded-xl block" style={{ width: '280px', height: 'auto', display: 'block' }} />

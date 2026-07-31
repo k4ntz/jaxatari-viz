@@ -31,8 +31,10 @@ Make sure you have Python (>= 3.10) and Node.js installed.
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install fastapi uvicorn pyyaml pydantic
+pip install -r requirements.txt
 ```
+
+> **Note on Video Rendering:** Generating rollout videos requires `jax`, `jaxlib`, and `ffmpeg` (or `imageio`). The backend will automatically detect and use the target repository's virtual environment (e.g. `thesis/.venv`) if present, or fallback to the active environment running `jaxatari-viz`.
 
 **Frontend Setup:**
 ```bash

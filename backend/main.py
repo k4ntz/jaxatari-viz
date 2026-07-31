@@ -135,6 +135,89 @@ def get_run_logs(run_id: str):
 
     return {"logs": logs}
 
+@app.get("/api/environments")
+def get_environments():
+    jaxatari_dir = Path("/Users/kantoz/Research/JAXAtari")
+    games_covered_file = jaxatari_dir / "games_covered.md"
+    gifs_dir = jaxatari_dir / "docs" / "source" / "_static" / "gifs"
+    
+    available_gifs = set()
+    if gifs_dir.exists():
+        for g in os.listdir(gifs_dir):
+            if g.endswith(".gif"):
+                available_gifs.add(g.replace(".gif", "").lower())
+
+    environments_dict = {}
+    
+    if games_covered_file.exists():
+        try:
+            content = games_covered_file.read_text()
+            current_category = "General"
+            
+            for line in content.splitlines():
+                line_str = line.strip()
+                if line_str.startswith("## "):
+                    current_category = line_str.replace("## ", "").strip()
+                elif line_str.startswith("|") and not line_str.startswith("| Game") and not line_str.startswith("|---"):
+                    parts = [p.strip() for p in line_str.split("|")[1:-1]]
+                    if len(parts) >= 3:
+                        game_name = parts[0]
+                        status = parts[1]
+                        mods_str = parts[2]
+                        
+                        try:
+                            mods_count = int(mods_str)
+                        except ValueError:
+                            mods_count = 0
+                            
+                        # Normalize key for GIF lookup
+                        normalized_key = game_name.replace("_", "").lower()
+                        if normalized_key == "montezumarevenge":
+                            normalized_key = "montezuma"
+                        elif normalized_key == "mspacman":
+                            normalized_key = "mspacman"
+                            
+                        has_gif = any(normalized_key in gif_key or gif_key in normalized_key for gif_key in available_gifs)
+                        
+                        # Store or update unique environment by ID (preferring entries with higher mod counts or GIF availability)
+                        if game_name not in environments_dict or mods_count > environments_dict[game_name]["mods_count"]:
+                            environments_dict[game_name] = {
+                                "id": game_name,
+                                "name": game_name.replace("_", " ").title(),
+                                "category": current_category,
+                                "status": status,
+                                "mods_count": mods_count,
+                                "has_gif": has_gif,
+                                "gif_url": f"/api/environments/gif/{game_name}" if has_gif else None
+                            }
+        except Exception as e:
+            print("Failed to parse games_covered.md:", e)
+
+    # Convert to list and sort alphabetically by name
+    environments = list(environments_dict.values())
+    environments.sort(key=lambda x: x["name"])
+
+    return {"environments": environments}
+
+@app.get("/api/environments/gif/{game_id}")
+def get_environment_gif(game_id: str):
+    from fastapi.responses import FileResponse
+    gifs_dir = Path("/Users/kantoz/Research/JAXAtari/docs/source/_static/gifs")
+    
+    if not gifs_dir.exists():
+        raise HTTPException(status_code=404, detail="GIF directory not found")
+        
+    normalized_id = game_id.replace("_", "").lower()
+    
+    # Try exact or fuzzy matches
+    for gif_file in os.listdir(gifs_dir):
+        if gif_file.endswith(".gif"):
+            gif_name = gif_file.replace(".gif", "").lower()
+            if gif_name == normalized_id or normalized_id in gif_name or gif_name in normalized_id:
+                return FileResponse(gifs_dir / gif_file, media_type="image/gif")
+                
+    raise HTTPException(status_code=404, detail="GIF preview not found for environment")
+
 @app.get("/api/baselines")
 def get_baselines():
     baselines = []
@@ -160,6 +243,137 @@ def get_baselines():
                 except Exception:
                     pass
     return {"data": baselines}
+
+@app.get("/runs/{run_id:path}/videos/{filename}")
+def serve_video(run_id: str, filename: str):
+    from fastapi.responses import FileResponse
+    if "::" in run_id:
+        project_name, run_folder = run_id.split("::", 1)
+    else:
+        project_name = APP_CONFIG.get("projects", [{}])[0].get("name", "")
+        run_folder = run_id
+
+    proj = get_project_by_name(project_name)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    video_path = Path(proj["runs_dir"]) / run_folder / "videos" / filename
+    if not video_path.exists():
+        raise HTTPException(status_code=404, detail="Video file not found")
+
+    media_type = "video/mp4" if filename.endswith(".mp4") else "image/gif"
+    return FileResponse(video_path, media_type=media_type)
+
+@app.post("/api/runs/{run_id:path}/render")
+def render_video(run_id: str, iter: Optional[int] = 0):
+    if "::" in run_id:
+        project_name, run_folder = run_id.split("::", 1)
+    else:
+        project_name = APP_CONFIG.get("projects", [{}])[0].get("name", "")
+        run_folder = run_id
+
+    proj = get_project_by_name(project_name)
+    if not proj:
+        raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found")
+
+    run_path = Path(proj["runs_dir"]) / run_folder
+    if not run_path.exists():
+        raise HTTPException(status_code=404, detail=f"Run directory not found: {run_path}")
+
+    adapter = get_adapter(proj.get("adapter", "auto"))
+    cfg = adapter.parse_config(run_path) or {}
+
+    game = cfg.get("game", cfg.get("env", "kangaroo"))
+    noise = cfg.get("noise", cfg.get("obs_noise_std", 2.0))
+
+    pol_file = run_path / "policies" / f"iter{iter:02d}.py"
+    if not pol_file.exists():
+        pol_file = run_path / "best_policy.py"
+    if not pol_file.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Policy file not found for iter {iter} in {run_path} (checked iter{iter:02d}.py and best_policy.py)"
+        )
+
+    videos_dir = run_path / "videos"
+    videos_dir.mkdir(parents=True, exist_ok=True)
+    video_filename = f"iter{iter:02d}.mp4"
+    video_path = videos_dir / video_filename
+
+    if not video_path.exists():
+        render_script = Path(__file__).parent.parent.parent / "thesis" / "scripts" / "render.py"
+        if not render_script.exists():
+            render_script = Path("/Users/kantoz/Research/legps/thesis/scripts/render.py")
+
+        if not render_script.exists():
+            raise HTTPException(status_code=500, detail=f"Render script not found at {render_script}")
+
+        env_vars = os.environ.copy()
+        repo_root = render_script.parent.parent
+        env_vars["PYTHONPATH"] = str(repo_root) + os.pathsep + env_vars.get("PYTHONPATH", "")
+
+        python_exe = sys.executable
+        venv_python = repo_root / ".venv" / "bin" / "python"
+        if venv_python.exists():
+            python_exe = str(venv_python)
+
+        cmd = [
+            python_exe,
+            str(render_script),
+            "--game", str(game),
+            "--policy", str(pol_file),
+            "--noise", str(noise),
+            "--out", str(video_path)
+        ]
+
+        try:
+            res = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=str(repo_root),
+                env=env_vars
+            )
+            if res.returncode != 0:
+                err_msg = res.stderr.strip() or res.stdout.strip() or f"Process exited with code {res.returncode}"
+                raise HTTPException(status_code=500, detail=f"Rendering failed: {err_msg}")
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status_code=500, detail="Rendering timed out after 120 seconds")
+        except Exception as e:
+            if isinstance(e, HTTPException):
+                raise e
+            raise HTTPException(status_code=500, detail=f"Rendering error: {str(e)}")
+
+    if not video_path.exists() and (videos_dir / f"iter{iter:02d}.gif").exists():
+        video_filename = f"iter{iter:02d}.gif"
+
+    return {"video_url": f"/runs/{run_id}/videos/{video_filename}"}
+
+@app.get("/api/runs/{run_id:path}/video_status")
+def get_video_status(run_id: str, iter: Optional[int] = 0):
+    if "::" in run_id:
+        project_name, run_folder = run_id.split("::", 1)
+    else:
+        project_name = APP_CONFIG.get("projects", [{}])[0].get("name", "")
+        run_folder = run_id
+
+    proj = get_project_by_name(project_name)
+    if not proj:
+        return {"exists": False, "video_url": None}
+
+    run_path = Path(proj["runs_dir"]) / run_folder
+    video_filename = f"iter{iter:02d}.mp4"
+    video_path = run_path / "videos" / video_filename
+    if video_path.exists():
+        return {"exists": True, "video_url": f"/runs/{run_id}/videos/{video_filename}"}
+
+    gif_filename = f"iter{iter:02d}.gif"
+    gif_path = run_path / "videos" / gif_filename
+    if gif_path.exists():
+        return {"exists": True, "video_url": f"/runs/{run_id}/videos/{gif_filename}"}
+
+    return {"exists": False, "video_url": None}
 
 if __name__ == "__main__":
     import uvicorn

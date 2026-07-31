@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { fetchRuns, type RunInfo } from '../api';
-import { Activity, BarChart2, FileText, Filter, Search, ChevronRight, Moon, Sun, Gamepad2 } from 'lucide-react';
+import { Activity, BarChart2, FileText, Search, ChevronRight, Moon, Sun, Gamepad2 } from 'lucide-react';
 
 interface SidebarProps {
   selectedRuns: string[];
@@ -17,15 +17,7 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedRuns, setSelectedRuns, theme 
   
   // Filter states
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
-  const [selectedMethods, setSelectedMethods] = useState<Set<string>>(new Set());
   const [selectedGames, setSelectedGames] = useState<Set<string>>(new Set());
-  const [selectedPops, setSelectedPops] = useState<Set<string>>(new Set());
-  const [selectedGens, setSelectedGens] = useState<Set<string>>(new Set());
-  const [selectedSigmas, setSelectedSigmas] = useState<Set<string>>(new Set());
-  const [selectedSticky, setSelectedSticky] = useState<Set<string>>(new Set());
-  const [selectedScratch, setSelectedScratch] = useState<Set<string>>(new Set());
-  const [selectedLlm, setSelectedLlm] = useState<Set<string>>(new Set());
-  const [selectedLlmReward, setSelectedLlmReward] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchRuns().then(data => {
@@ -36,51 +28,23 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedRuns, setSelectedRuns, theme 
     });
   }, []);
 
-  const models = useMemo(() => Array.from(new Set(runs.map(r => String(r.config.model || 'unknown')))), [runs]);
-  const methods = useMemo(() => Array.from(new Set(runs.map(r => String(r.config.method || 'unknown')))), [runs]);
-  const games = useMemo(() => Array.from(new Set(runs.map(r => String(r.config.game || 'unknown')))), [runs]);
-  const pops = useMemo(() => Array.from(new Set(runs.map(r => String(r.config.popsize ?? 'unknown')))), [runs]);
-  const gens = useMemo(() => Array.from(new Set(runs.map(r => String(r.config.generations ?? 'unknown')))), [runs]);
-  const sigmas = useMemo(() => Array.from(new Set(runs.map(r => String(r.config.sigma0 ?? 'unknown')))), [runs]);
-  const stickies = useMemo(() => Array.from(new Set(runs.map(r => String(r.config.sticky_actions ?? 'unknown')))), [runs]);
-  const scratches = useMemo(() => Array.from(new Set(runs.map(r => String(r.config.from_scratch ?? 'unknown')))), [runs]);
-  const llms = useMemo(() => Array.from(new Set(runs.map(r => String(r.config.llm_enabled ?? 'unknown')))), [runs]);
-  const llmRewards = useMemo(() => Array.from(new Set(runs.map(r => String(r.config.llm_reward ?? 'unknown')))), [runs]);
-
   useEffect(() => {
-    if (selectedModels.size === 0 && selectedMethods.size === 0 && selectedGames.size === 0 && selectedPops.size === 0 && selectedGens.size === 0 && selectedSigmas.size === 0 && selectedSticky.size === 0 && selectedScratch.size === 0 && selectedLlm.size === 0 && selectedLlmReward.size === 0) return;
+    if (selectedModels.size === 0 && selectedGames.size === 0) return;
     
     const matchingRuns = runs.filter(run => {
       const modelMatch = selectedModels.has(String(run.config.model || 'unknown'));
-      const methodMatch = selectedMethods.size === 0 || selectedMethods.has(String(run.config.method || 'unknown'));
       const gameMatch = selectedGames.has(String(run.config.game || 'unknown'));
-      const popMatch = selectedPops.size === 0 || selectedPops.has(String(run.config.popsize ?? 'unknown'));
-      const genMatch = selectedGens.size === 0 || selectedGens.has(String(run.config.generations ?? 'unknown'));
-      const sigmaMatch = selectedSigmas.size === 0 || selectedSigmas.has(String(run.config.sigma0 ?? 'unknown'));
-      const stickyMatch = selectedSticky.size === 0 || selectedSticky.has(String(run.config.sticky_actions ?? 'unknown'));
-      const scratchMatch = selectedScratch.size === 0 || selectedScratch.has(String(run.config.from_scratch ?? 'unknown'));
-      const llmMatch = selectedLlm.size === 0 || selectedLlm.has(String(run.config.llm_enabled ?? 'unknown'));
-      const llmRewardMatch = selectedLlmReward.size === 0 || selectedLlmReward.has(String(run.config.llm_reward ?? 'unknown'));
       
-      return modelMatch && methodMatch && gameMatch && popMatch && genMatch && sigmaMatch && stickyMatch && scratchMatch && llmMatch && llmRewardMatch;
+      return modelMatch && gameMatch;
     }).map(r => r.id);
     
     setSelectedRuns(matchingRuns);
-  }, [selectedModels, selectedMethods, selectedGames, selectedPops, selectedGens, selectedSigmas, selectedSticky, selectedScratch, selectedLlm, selectedLlmReward, runs, setSelectedRuns]);
+  }, [selectedModels, selectedGames, runs, setSelectedRuns]);
 
   const handleRunToggle = (runId: string) => {
     setSelectedRuns(
       selectedRuns.includes(runId) ? selectedRuns.filter(id => id !== runId) : [...selectedRuns, runId]
     );
-  };
-
-  const toggleFilter = (setFilter: React.Dispatch<React.SetStateAction<Set<string>>>, value: string) => {
-    setFilter(prev => {
-      const next = new Set(prev);
-      if (next.has(value)) next.delete(value);
-      else next.add(value);
-      return next;
-    });
   };
 
   const filteredRuns = runs.filter(r => r.id.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -173,23 +137,6 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedRuns, setSelectedRuns, theme 
         )}
       </div>
 
-    </div>
-  );
-};
-
-const FilterSection = ({ title, options, state, setState, toggleFilter }: { title: string, options: string[], state: Set<string>, setState: React.Dispatch<React.SetStateAction<Set<string>>>, toggleFilter: any }) => {
-  if (options.length === 0) return null;
-  return (
-    <div className="mb-6 bg-[rgba(0,0,0,0.2)] p-3 rounded-lg border border-[#2e334d]">
-      <h3 className="text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wider">{title}</h3>
-      <div className="flex flex-col gap-2">
-        {options.map(o => (
-          <label key={o} className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer hover:text-white transition-colors">
-            <input type="checkbox" checked={state.has(o)} onChange={() => toggleFilter(setState, o)} />
-            {o}
-          </label>
-        ))}
-      </div>
     </div>
   );
 };
