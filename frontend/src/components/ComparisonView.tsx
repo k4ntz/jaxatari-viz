@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Plot from 'react-plotly.js';
 import { fetchRunMetrics, fetchRuns, fetchBaselines, type RunInfo, type BaselineInfo } from '../api';
-import { LayoutGrid, Gamepad2, BarChart2, ChevronDown } from 'lucide-react';
+import { LayoutGrid, Gamepad2, BarChart2, ChevronDown, Filter, RotateCcw } from 'lucide-react';
 import { Toggle } from './Toggle';
 
 interface ComparisonProps {
@@ -390,48 +390,116 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
 
       <div className="flex flex-col gap-10">
         {/* Top Filters Bar */}
-        <div className="bg-[#16192b] border border-[#2e334d] p-5 rounded-2xl flex flex-wrap gap-8 items-center">
-          {games.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Games</span>
-              <div className="flex flex-wrap gap-3">
-                {games.map(g => (
-                  <label key={g} className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer hover:text-white bg-[rgba(0,0,0,0.2)] px-3 py-1.5 rounded-lg border border-[#2e334d]">
-                    <input type="checkbox" checked={selectedGames.has(g)} onChange={() => toggleFilter(setSelectedGames, g)} />
-                    <span>{g}</span>
-                  </label>
-                ))}
-              </div>
+        <div className="bg-[#16192b] border border-[#2e334d] p-6 rounded-2xl flex flex-col gap-6">
+          <div className="flex items-center justify-between border-b border-[#2e334d] pb-4">
+            <div className="flex items-center gap-2">
+              <Filter className="w-5 h-5 text-indigo-400" />
+              <h2 className="text-base font-bold text-white tracking-wide">Filter Runs</h2>
             </div>
-          )}
+            <button
+              onClick={() => {
+                setSelectedGames(new Set(games));
+                setSelectedModels(new Set(models));
+                setSelectedMethods(new Set(methods));
+              }}
+              className="text-xs font-semibold text-slate-400 hover:text-indigo-400 flex items-center gap-1.5 transition-colors px-3 py-1.5 rounded-lg border border-[#2e334d] bg-[rgba(0,0,0,0.2)] hover:bg-[rgba(99,102,241,0.1)]"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset Filters</span>
+            </button>
+          </div>
 
-          {models.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Models</span>
-              <div className="flex flex-wrap gap-3">
-                {models.map(m => (
-                  <label key={m} className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer hover:text-white bg-[rgba(0,0,0,0.2)] px-3 py-1.5 rounded-lg border border-[#2e334d]">
-                    <input type="checkbox" checked={selectedModels.has(m)} onChange={() => toggleFilter(setSelectedModels, m)} />
-                    <span>{m}</span>
-                  </label>
-                ))}
+          <div className="flex flex-wrap gap-x-12 gap-y-6 items-start">
+            {games.length > 0 && (
+              <div className="flex flex-col gap-3 min-w-[200px]">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Games</span>
+                  <span className="badge text-[10px] py-0 px-1.5 bg-indigo-500/20 border-indigo-500/30 text-indigo-300">
+                    {selectedGames.size} / {games.length}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {games.map(g => {
+                    const active = selectedGames.has(g);
+                    return (
+                      <button
+                        key={g}
+                        onClick={() => toggleFilter(setSelectedGames, g)}
+                        className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 ${
+                          active
+                            ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-200 shadow-[0_0_10px_rgba(99,102,241,0.2)]'
+                            : 'bg-[rgba(0,0,0,0.2)] border-[#2e334d] text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-indigo-400' : 'bg-slate-600'}`} />
+                        <span>{g}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {methods.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Methods</span>
-              <div className="flex flex-wrap gap-3">
-                {methods.map(method => (
-                  <label key={method} className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer hover:text-white bg-[rgba(0,0,0,0.2)] px-3 py-1.5 rounded-lg border border-[#2e334d]">
-                    <input type="checkbox" checked={selectedMethods.has(method)} onChange={() => toggleFilter(setSelectedMethods, method)} />
-                    <span>{method}</span>
-                  </label>
-                ))}
+            {models.length > 0 && (
+              <div className="flex flex-col gap-3 min-w-[220px]">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Models</span>
+                  <span className="badge text-[10px] py-0 px-1.5 bg-purple-500/20 border-purple-500/30 text-purple-300">
+                    {selectedModels.size} / {models.length}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {models.map(m => {
+                    const active = selectedModels.has(m);
+                    return (
+                      <button
+                        key={m}
+                        onClick={() => toggleFilter(setSelectedModels, m)}
+                        className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 ${
+                          active
+                            ? 'bg-purple-600/20 border-purple-500/50 text-purple-200 shadow-[0_0_10px_rgba(168,85,247,0.2)]'
+                            : 'bg-[rgba(0,0,0,0.2)] border-[#2e334d] text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-purple-400' : 'bg-slate-600'}`} />
+                        <span>{m}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+
+            {methods.length > 0 && (
+              <div className="flex flex-col gap-3 min-w-[200px]">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Methods</span>
+                  <span className="badge text-[10px] py-0 px-1.5 bg-emerald-500/20 border-emerald-500/30 text-emerald-300">
+                    {selectedMethods.size} / {methods.length}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {methods.map(method => {
+                    const active = selectedMethods.has(method);
+                    return (
+                      <button
+                        key={method}
+                        onClick={() => toggleFilter(setSelectedMethods, method)}
+                        className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 ${
+                          active
+                            ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-200 shadow-[0_0_10px_rgba(16,185,129,0.2)]'
+                            : 'bg-[rgba(0,0,0,0.2)] border-[#2e334d] text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                        <span>{method}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-4 bg-[rgba(0,0,0,0.2)] p-4 rounded-xl border border-[#2e334d] w-fit">
