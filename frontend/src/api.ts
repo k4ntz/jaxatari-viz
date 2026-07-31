@@ -35,12 +35,12 @@ export const fetchBaselines = async (): Promise<BaselineInfo[]> => {
 };
 
 export const fetchRunMetrics = async (runId: string) => {
-  const response = await axios.get(`${API_BASE}/runs/${runId}/metrics`);
+  const response = await axios.get(`${API_BASE}/runs/${encodeURIComponent(runId)}/metrics`);
   return response.data.data;
 };
 
 export const fetchRunLogs = async (runId: string) => {
-  const response = await axios.get(`${API_BASE}/runs/${runId}/logs`);
+  const response = await axios.get(`${API_BASE}/runs/${encodeURIComponent(runId)}/logs`);
   return response.data.logs;
 };
 

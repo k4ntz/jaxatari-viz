@@ -94,7 +94,7 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedRuns, setSelectedRuns, theme 
         <div className="flex-1 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-gradient-accent">
-              ThesisViz
+              JAXAtari-Viz
             </h1>
             <div className="text-xs text-slate-400 font-medium tracking-wider">Experiment Dashboard</div>
           </div>

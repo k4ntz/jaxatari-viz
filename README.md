@@ -1,42 +1,79 @@
-# Thesis Visualization Web App
+# JAXAtari-Viz
 
-I've successfully built the visualization web application based on our design discussions!
+An extensible, web-based visualization dashboard and experiment tracker for JAXAtari and Reinforcement Learning / Evolutionary algorithms (DQN, PPO, CMA-ES, LLM policies, etc.).
 
-## Architecture & Stack
-- **Backend**: FastAPI (Python). It automatically scans your `/Users/kantoz/Research/legps/thesis/runs` directory, parsing configuration files (`config.json`), metrics (`iter*_cma.jsonl`), and logs.
-- **Frontend**: React + Vite + TypeScript.
-- **Charting**: `plotly.js` via `react-plotly.js` for highly interactive data science charts.
-- **Styling**: Premium dark mode aesthetics using pure CSS custom properties (`index.css`) and Tailwind-like utility classes.
+## Features
+- **Multi-Project Support**: Monitor and compare experiment runs across multiple repository directories from a single unified interface.
+- **Pluggable Adapter System**: Ingest custom metrics (`jsonl`, `json`) and logs seamlessly.
+- **Interactive Plotly Visualizations**: Progress curves, game score benchmarking against PPO/DQN/Human baselines, and logs exploration.
+- **Dark/Light Theme**: Built with React, Vite, TypeScript, and pure CSS design tokens.
 
-## Features Built
-1. **Sidebar Navigation & Filtering**: 
-   - Dynamically extracts available configurations (e.g., Models, Methods) from your runs.
-   - Provides checkboxes to quickly filter and select runs.
-2. **Comparison View** (`/compare`):
-   - Side-by-side Plotly charts plotting progress curves (Best Fitness, Game Score, and Min Y).
-3. **Run Details View** (`/run/:runId`):
-   - Click on any run in the sidebar to view its specific configuration (`config.json`), a dedicated progress chart, and a searchable/scrollable view of its raw logs (`*.log`).
-4. **Logs Explorer** (`/logs`):
-   - A dedicated interface to view logs from multiple runs simultaneously, complete with a text search filter to quickly find specific events (e.g., "exception", "error") across all selected runs.
+---
 
-## How to use
-Both the backend and frontend servers have been started in the background.
-
-- **Frontend URL**: [http://localhost:5173](http://localhost:5173) (or whatever port Vite assigned, usually 5173)
-- **Backend API**: [http://localhost:8000](http://localhost:8000)
-
-If you ever need to restart them manually in the future, you can run:
-
-**Backend:**
-```bash
-cd /Users/kantoz/Research/legps/thesis
-.venv/bin/python -m uvicorn viz_app.backend.main:app --reload --port 8000
+## Directory Architecture
+```
+jaxatari-viz/
+├── config.yaml          # Multi-project directory and adapter settings
+├── backend/             # FastAPI backend server
+│   ├── main.py          # API endpoints & config loader
+│   └── adapters.py      # Pluggable metric & log parser adapters
+└── frontend/            # React + Vite + TypeScript frontend
 ```
 
-**Frontend:**
+---
+
+## Quick Start
+
+### 1. Install Dependencies
+Make sure you have Python (>= 3.10) and Node.js installed.
+
+**Backend Setup:**
 ```bash
-cd /Users/kantoz/Research/legps/thesis/viz_app/frontend
+python -m venv .venv
+source .venv/bin/activate
+pip install fastapi uvicorn pyyaml pydantic
+```
+
+**Frontend Setup:**
+```bash
+cd frontend
+npm install
+```
+
+---
+
+### 2. Configure Your Projects (`config.yaml`)
+Edit `config.yaml` to point to the run folders of your projects:
+
+```yaml
+projects:
+  - name: "Thesis Policy Search"
+    runs_dir: "/path/to/thesis/runs"
+    adapter: "cma_jsonl"
+    baselines_file: "/path/to/thesis/data/baselines.csv"
+
+  - name: "JAXAtari DQN"
+    runs_dir: "/path/to/dqn/runs"
+    adapter: "standard_json"
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+```
+
+---
+
+### 3. Launch `jaxatari-viz`
+
+**Start Backend:**
+```bash
+python -m uvicorn backend.main:app --reload --port 8000
+```
+
+**Start Frontend:**
+```bash
+cd frontend
 npm run dev
 ```
 
-Let me know if you'd like to adjust any of the charts, refine the parsing logic for specific metric keys, or add more views!
+Open your browser at [http://localhost:5173](http://localhost:5173).
