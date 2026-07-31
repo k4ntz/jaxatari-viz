@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { NavLink } from 'react-router-dom';
 import { fetchRuns, type RunInfo } from '../api';
-import { Activity, BarChart2, FileText, Filter, Search, ChevronRight, Moon, Sun } from 'lucide-react';
+import { Activity, BarChart2, FileText, Filter, Search, ChevronRight, Moon, Sun, Gamepad2 } from 'lucide-react';
 
 interface SidebarProps {
   selectedRuns: string[];
