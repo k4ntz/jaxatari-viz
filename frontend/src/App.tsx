@@ -5,6 +5,8 @@ import ComparisonView from './components/ComparisonView';
 import RunDetails from './components/RunDetails';
 import LogsExplorer from './components/LogsExplorer';
 
+import EnvironmentsView from './components/EnvironmentsView';
+
 function App() {
   const [selectedRuns, setSelectedRuns] = React.useState<string[]>([]);
   const [theme, setTheme] = React.useState<string>(() => {
@@ -28,7 +30,8 @@ function App() {
         <main className="flex-1 flex flex-col h-full overflow-y-auto">
           <Routes>
             <Route path="/" element={<Navigate to="/compare" replace />} />
-            <Route path="/compare" element={<ComparisonView selectedRuns={selectedRuns} theme={theme} />} />
+            <Route path="/environments" element={<EnvironmentsView />} />
+            <Route path="/compare" element={<ComparisonView selectedRuns={selectedRuns} setSelectedRuns={setSelectedRuns} theme={theme} />} />
             <Route path="/run/:runId" element={<RunDetails />} />
             <Route path="/logs" element={<LogsExplorer selectedRuns={selectedRuns} />} />
           </Routes>

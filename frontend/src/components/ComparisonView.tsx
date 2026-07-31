@@ -20,8 +20,9 @@ const filterOutliersIQR = (data: number[]) => {
   return data.filter(x => x >= lowerBound && x <= upperBound);
 };
 
-const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, theme = 'dark' }) => {
+const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRuns, theme = 'dark' }) => {
   const [metricsData, setMetricsData] = useState<Record<string, any[]>>({});
+  const [allRuns, setAllRuns] = useState<RunInfo[]>([]);
   const [runInfos, setRunInfos] = useState<Record<string, RunInfo>>({});
   const [loading, setLoading] = useState(false);
   const [baselinesMap, setBaselinesMap] = useState<Record<string, BaselineInfo>>({});
@@ -30,6 +31,46 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, theme = 'dark
     const saved = localStorage.getItem(`outlier_filter_aggregate`);
     return saved ? JSON.parse(saved) : false;
   });
+
+  // Filter state for top bar
+  const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
+  const [selectedMethods, setSelectedMethods] = useState<Set<string>>(new Set());
+  const [selectedGames, setSelectedGames] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    fetchRuns().then(data => {
+      setAllRuns(data);
+      const infoMap: Record<string, RunInfo> = {};
+      data.forEach(r => infoMap[r.id] = r);
+      setRunInfos(infoMap);
+      setSelectedModels(new Set(data.map(r => String(r.config.model || 'unknown'))));
+      setSelectedGames(new Set(data.map(r => String(r.config.game || 'unknown')).filter(g => g !== 'montezuma')));
+    });
+  }, []);
+
+  const models = React.useMemo(() => Array.from(new Set(allRuns.map(r => String(r.config.model || 'unknown')))), [allRuns]);
+  const methods = React.useMemo(() => Array.from(new Set(allRuns.map(r => String(r.config.method || 'unknown')))), [allRuns]);
+  const games = React.useMemo(() => Array.from(new Set(allRuns.map(r => String(r.config.game || 'unknown')))), [allRuns]);
+
+  useEffect(() => {
+    if (!setSelectedRuns || allRuns.length === 0) return;
+    const matching = allRuns.filter(run => {
+      const modelMatch = selectedModels.has(String(run.config.model || 'unknown'));
+      const methodMatch = selectedMethods.size === 0 || selectedMethods.has(String(run.config.method || 'unknown'));
+      const gameMatch = selectedGames.has(String(run.config.game || 'unknown'));
+      return modelMatch && methodMatch && gameMatch;
+    }).map(r => r.id);
+    setSelectedRuns(matching);
+  }, [selectedModels, selectedMethods, selectedGames, allRuns]);
+
+  const toggleFilter = (setFilter: React.Dispatch<React.SetStateAction<Set<string>>>, value: string) => {
+    setFilter(prev => {
+      const next = new Set(prev);
+      if (next.has(value)) next.delete(value);
+      else next.add(value);
+      return next;
+    });
+  };
 
   useEffect(() => {
     localStorage.setItem(`outlier_filter_aggregate`, JSON.stringify(aggFilterOutliers));
@@ -347,7 +388,52 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, theme = 'dark
         {loading && <div className="badge animate-pulse border-indigo-500 text-indigo-400 bg-indigo-500/10">Syncing data...</div>}
       </div>
 
-      <div className="flex flex-col gap-16">
+      <div className="flex flex-col gap-10">
+        {/* Top Filters Bar */}
+        <div className="bg-[#16192b] border border-[#2e334d] p-5 rounded-2xl flex flex-wrap gap-8 items-center">
+          {games.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Games</span>
+              <div className="flex flex-wrap gap-3">
+                {games.map(g => (
+                  <label key={g} className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer hover:text-white bg-[rgba(0,0,0,0.2)] px-3 py-1.5 rounded-lg border border-[#2e334d]">
+                    <input type="checkbox" checked={selectedGames.has(g)} onChange={() => toggleFilter(setSelectedGames, g)} />
+                    <span>{g}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {models.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Models</span>
+              <div className="flex flex-wrap gap-3">
+                {models.map(m => (
+                  <label key={m} className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer hover:text-white bg-[rgba(0,0,0,0.2)] px-3 py-1.5 rounded-lg border border-[#2e334d]">
+                    <input type="checkbox" checked={selectedModels.has(m)} onChange={() => toggleFilter(setSelectedModels, m)} />
+                    <span>{m}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {methods.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Methods</span>
+              <div className="flex flex-wrap gap-3">
+                {methods.map(method => (
+                  <label key={method} className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer hover:text-white bg-[rgba(0,0,0,0.2)] px-3 py-1.5 rounded-lg border border-[#2e334d]">
+                    <input type="checkbox" checked={selectedMethods.has(method)} onChange={() => toggleFilter(setSelectedMethods, method)} />
+                    <span>{method}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="flex items-center gap-4 bg-[rgba(0,0,0,0.2)] p-4 rounded-xl border border-[#2e334d] w-fit">
           <span className="text-sm font-medium text-slate-400">Group distributions by:</span>
           <select 

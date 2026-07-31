@@ -111,6 +111,10 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedRuns, setSelectedRuns, theme 
       </div>
 
       <nav className="p-4 flex flex-col gap-2 border-b border-[#2e334d]">
+        <NavLink to="/environments" className={({isActive}) => `sidebar-link ${isActive ? 'active' : ''}`}>
+          <Gamepad2 className="w-5 h-5" />
+          <span>Environments</span>
+        </NavLink>
         <NavLink to="/compare" className={({isActive}) => `sidebar-link ${isActive ? 'active' : ''}`}>
           <BarChart2 className="w-5 h-5" />
           <span>Compare Runs</span>
@@ -122,26 +126,7 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedRuns, setSelectedRuns, theme 
       </nav>
 
       <div className="p-4 flex-1 overflow-y-auto custom-scrollbar">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2 text-slate-400">
-            <Filter className="w-4 h-4" />
-            <h2 className="text-sm font-bold uppercase tracking-wider">Filters</h2>
-          </div>
-        </div>
-        
-        {/* Filters */}
-        <FilterSection title="Game (Environment)" options={games} state={selectedGames} setState={setSelectedGames} toggleFilter={toggleFilter} />
-        <FilterSection title="Models" options={models} state={selectedModels} setState={setSelectedModels} toggleFilter={toggleFilter} />
-        <FilterSection title="Methods" options={methods} state={selectedMethods} setState={setSelectedMethods} toggleFilter={toggleFilter} />
-        <FilterSection title="Noise: Sigma0" options={sigmas} state={selectedSigmas} setState={setSelectedSigmas} toggleFilter={toggleFilter} />
-        <FilterSection title="Noise: Sticky Actions" options={stickies} state={selectedSticky} setState={setSelectedSticky} toggleFilter={toggleFilter} />
-        <FilterSection title="Evol: Pop Size" options={pops} state={selectedPops} setState={setSelectedPops} toggleFilter={toggleFilter} />
-        <FilterSection title="Evol: Generations" options={gens} state={selectedGens} setState={setSelectedGens} toggleFilter={toggleFilter} />
-        <FilterSection title="Strat: From Scratch" options={scratches} state={selectedScratch} setState={setSelectedScratch} toggleFilter={toggleFilter} />
-        <FilterSection title="Strat: LLM Enabled" options={llms} state={selectedLlm} setState={setSelectedLlm} toggleFilter={toggleFilter} />
-        <FilterSection title="Strat: LLM Reward" options={llmRewards} state={selectedLlmReward} setState={setSelectedLlmReward} toggleFilter={toggleFilter} />
-
-        <div className="flex items-center justify-between mb-3 mt-8">
+        <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400">Runs</h2>
           <span className="badge">{filteredRuns.length}</span>
         </div>
@@ -169,7 +154,7 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedRuns, setSelectedRuns, theme 
                   onChange={() => handleRunToggle(run.id)}
                 />
                 <NavLink 
-                  to={`/run/${run.id}`}
+                  to={`/run/${encodeURIComponent(run.id)}`}
                   className="text-xs text-slate-300 hover:text-white truncate flex-1 flex items-center justify-between group gap-1"
                   title={run.id}
                 >
