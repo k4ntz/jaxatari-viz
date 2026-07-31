@@ -1,0 +1,46 @@
+:root[data-theme="light"] {
+  --bg-base: #f1f5f9;
+  --bg-panel: rgba(255, 255, 255, 0.85);
+  --bg-panel-solid: #ffffff;
+  --bg-panel-hover: rgba(241, 245, 249, 0.9);
+  
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  
+  --accent-1: #4f46e5;
+  --accent-2: #9333ea;
+  --accent-glow: rgba(79, 70, 229, 0.15);
+  
+  --border-color: rgba(0, 0, 0, 0.1);
+  --border-highlight: rgba(0, 0, 0, 0.2);
+}
+
+:root[data-theme="light"] body::before {
+  background: radial-gradient(circle, rgba(79, 70, 229, 0.1) 0%, transparent 70%);
+}
+
+:root[data-theme="light"] .text-white { color: #0f172a !important; }
+:root[data-theme="light"] .text-slate-200 { color: #1e293b !important; }
+:root[data-theme="light"] .text-slate-300 { color: #334155 !important; }
+:root[data-theme="light"] .text-slate-400 { color: #475569 !important; }
+:root[data-theme="light"] .text-slate-500 { color: #64748b !important; }
+:root[data-theme="light"] .text-slate-600 { color: #94a3b8 !important; }
+:root[data-theme="light"] .text-indigo-300 { color: #6366f1 !important; }
+:root[data-theme="light"] .text-indigo-400 { color: #4f46e5 !important; }
+
+:root[data-theme="light"] .bg-slate-800 { background-color: rgba(0, 0, 0, 0.05) !important; }
+:root[data-theme="light"] .bg-\[\#16192b\] { background-color: var(--bg-panel-solid) !important; }
+:root[data-theme="light"] .bg-\[\#1f233a\] { background-color: var(--bg-panel-hover) !important; }
+:root[data-theme="light"] .bg-\[\#0f111a\] { background-color: var(--bg-base) !important; }
+:root[data-theme="light"] .border-\[\#2e334d\] { border-color: var(--border-color) !important; }
+:root[data-theme="light"] .border-slate-600 { border-color: rgba(0,0,0,0.1) !important; }
+:root[data-theme="light"] .border-slate-700\/50 { border-color: rgba(0,0,0,0.1) !important; }
+:root[data-theme="light"] .bg-slate-800\/20 { background-color: rgba(0,0,0,0.03) !important; }
+:root[data-theme="light"] .bg-black { background-color: #000000 !important; }
+
+:root[data-theme="light"] .prose summary { color: #4338ca !important; }
+:root[data-theme="light"] .prose summary:hover { color: #3730a3 !important; }
+:root[data-theme="light"] .prose :not(pre) > code { color: #4338ca !important; background: rgba(79, 70, 229, 0.1) !important; }
+:root[data-theme="light"] .prose pre code,
+:root[data-theme="light"] .prose pre code * { background: transparent !important; }
