@@ -415,7 +415,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
         {loading && <div className="badge animate-pulse border-indigo-500 text-indigo-400 bg-indigo-500/10">Syncing data...</div>}
       </div>
 
-      <div className="flex flex-col gap-10">
+      <div className="flex flex-col" style={{ gap: 'var(--game-outer-gap, 3.5rem)' }}>
         {/* Top Filters Bar */}
         <div className="bg-[#16192b] border border-[#2e334d] p-6 rounded-2xl flex flex-col gap-6 mb-4">
           <div className="flex items-center justify-between border-b border-[#2e334d] pb-4">
@@ -607,9 +607,9 @@ const GameSection = ({ game, gameRuns, generatePlotData, generateBoxPlotData, la
   }, [filterOutliers, game]);
 
   return (
-    <div className="flex flex-col gap-6 relative">
+    <div className="flex flex-col relative" style={{ gap: 'var(--game-inner-gap, 0.25rem)' }}>
       <div 
-        className="flex items-center gap-3 mb-2 cursor-pointer hover:bg-slate-800/50 p-3 rounded-xl transition-colors group"
+        className="flex items-center gap-3 cursor-pointer hover:bg-slate-800/50 p-3 rounded-xl transition-colors group"
         onClick={() => setExpanded(!expanded)}
       >
         <div className="p-2 bg-indigo-500/20 rounded-lg border border-indigo-500/30">
@@ -623,7 +623,7 @@ const GameSection = ({ game, gameRuns, generatePlotData, generateBoxPlotData, la
         </div>
       </div>
 
-      <div className="panel flex flex-col group mt-2">
+      <div className="panel flex flex-col group">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-base font-semibold text-white tracking-wide">Human Normalized Score Distribution</h3>
           <div className="flex items-center gap-4">

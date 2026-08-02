@@ -30,6 +30,10 @@
   
   --transition-fast: 0.15s ease;
   --transition-normal: 0.3s ease;
+
+  /* Comparison View Game Section Spacing Variables */
+  --game-inner-gap: 0.25rem; /* Space between game header and graph */
+  --game-outer-gap: 3.5rem;  /* Space between different game sections */
 }
 
 * {
