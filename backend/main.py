@@ -67,11 +67,13 @@ def get_runs():
                 if config_data is None:
                     continue
 
-                # Ensure game and model fields exist or provide sensible defaults
-                if "game" not in config_data:
-                    config_data["game"] = config_data.get("env", "unknown_game")
-                if "model" not in config_data:
-                    config_data["model"] = config_data.get("method", "unknown_model")
+                # Ensure game, method, and model fields exist
+                if "game" not in config_data or config_data["game"] == "unknown_game":
+                    config_data["game"] = config_data.get("env_name", config_data.get("env", "unknown_game"))
+                if "method" not in config_data or config_data["method"] == "unknown_method":
+                    config_data["method"] = config_data.get("algorithm", "BlendRL" if "blend" in str(config_data.get("wandb_project_name", "")).lower() else "unknown_method")
+                if "model" not in config_data or config_data["model"] == "unknown_model":
+                    config_data["model"] = config_data.get("exp_name", config_data.get("method", "unknown_model"))
 
                 has_metrics = len(adapter.parse_metrics(run_path)) > 0
                 raw_logs = adapter.parse_logs(run_path, runs_dir, config_data)
@@ -145,7 +147,7 @@ def get_environments():
     if gifs_dir.exists():
         for g in os.listdir(gifs_dir):
             if g.endswith(".gif"):
-                available_gifs.add(g.replace(".gif", "").lower())
+                available_gifs.add(g.replace(".gif", "").replace("_", "").lower())
 
     environments_dict = {}
     
@@ -212,7 +214,7 @@ def get_environment_gif(game_id: str):
     # Try exact or fuzzy matches
     for gif_file in os.listdir(gifs_dir):
         if gif_file.endswith(".gif"):
-            gif_name = gif_file.replace(".gif", "").lower()
+            gif_name = gif_file.replace(".gif", "").replace("_", "").lower()
             if gif_name == normalized_id or normalized_id in gif_name or gif_name in normalized_id:
                 return FileResponse(gifs_dir / gif_file, media_type="image/gif")
                 
@@ -244,7 +246,7 @@ def get_baselines():
                     pass
     return {"data": baselines}
 
-@app.get("/runs/{run_id:path}/videos/{filename}")
+@app.get("/runs/{run_id:path}/videos/{filename:path}")
 def serve_video(run_id: str, filename: str):
     from fastapi.responses import FileResponse
     if "::" in run_id:
@@ -257,11 +259,22 @@ def serve_video(run_id: str, filename: str):
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    video_path = Path(proj["runs_dir"]) / run_folder / "videos" / filename
+    run_path = Path(proj["runs_dir"]) / run_folder
+    video_path = run_path / "videos" / filename
+    if not video_path.exists():
+        video_path = run_path / "media" / "videos" / filename
+    if not video_path.exists():
+        video_path = run_path / filename
+
     if not video_path.exists():
         raise HTTPException(status_code=404, detail="Video file not found")
 
-    media_type = "video/mp4" if filename.endswith(".mp4") else "image/gif"
+    media_type = "video/mp4"
+    if filename.endswith(".gif"):
+        media_type = "image/gif"
+    elif filename.endswith(".webm"):
+        media_type = "video/webm"
+
     return FileResponse(video_path, media_type=media_type)
 
 @app.post("/api/runs/{run_id:path}/render")
@@ -372,6 +385,14 @@ def get_video_status(run_id: str, iter: Optional[int] = 0):
     gif_path = run_path / "videos" / gif_filename
     if gif_path.exists():
         return {"exists": True, "video_url": f"/runs/{run_id}/videos/{gif_filename}"}
+
+    # Check for any video files in videos/ or media/videos/
+    video_dirs = [run_path / "videos", run_path / "media" / "videos"]
+    for vdir in video_dirs:
+        if vdir.exists():
+            for vfile in os.listdir(vdir):
+                if vfile.endswith((".mp4", ".gif", ".webm")):
+                    return {"exists": True, "video_url": f"/runs/{run_id}/videos/{vfile}"}
 
     return {"exists": False, "video_url": None}
 

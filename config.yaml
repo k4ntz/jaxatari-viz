@@ -7,6 +7,11 @@ projects:
     adapter: "cma_jsonl" # Options: cma_jsonl, standard_json, tensorboard_csv, auto
     baselines_file: "/Users/kantoz/Research/legps/thesis/data/baselines.csv"
 
+  - name: "WandB Downloads"
+    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads"
+    adapter: "wandb"
+    baselines_file: "/Users/kantoz/Research/legps/thesis/data/baselines.csv"
+
   # Example additional project configurations:
   # - name: "JAXAtari DQN"
   #   runs_dir: "/Users/kantoz/Research/jaxatari-dqn/runs"

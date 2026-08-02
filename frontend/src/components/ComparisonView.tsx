@@ -45,6 +45,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
       data.forEach(r => infoMap[r.id] = r);
       setRunInfos(infoMap);
       setSelectedModels(new Set(data.map(r => String(r.config.model || 'unknown'))));
+      setSelectedMethods(new Set(data.map(r => String(r.config.method || 'unknown'))));
       setSelectedGames(new Set(data.map(r => String(r.config.game || 'unknown')).filter(g => g !== 'montezuma')));
     });
   }, []);
@@ -178,21 +179,28 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
       
       for (let i = 0; i < runData.length; i++) {
         const item = runData[i];
-        if (item.gen !== undefined && item[metricKey] !== undefined) {
-          x.push(item.gen);
-          y.push(item[metricKey]);
-          if (item.gen > maxX) maxX = item.gen;
+        const stepVal = item.gen ?? item.global_step ?? item.step ?? item._step ?? item.iteration;
+        const metricVal = item[metricKey] ?? (metricKey === 'ret_mean' ? (item['charts/episodic_return'] ?? item['charts/episodic_game_return'] ?? item['eval/episodic_return_mod'] ?? item['episodic_return'] ?? item['reward']) : (metricKey === 'best_fitness' ? (item['ret_mean'] ?? item['charts/episodic_return'] ?? item['charts/episodic_game_return'] ?? item['losses/loss']) : undefined));
+        
+        if (stepVal !== undefined && metricVal !== undefined) {
+          x.push(stepVal);
+          y.push(metricVal);
+          if (stepVal > maxX) maxX = stepVal;
         }
       }
 
       const color = colors[idx % colors.length];
+      const cfg = runInfos[runId]?.config || {};
+      const method = cfg.method || 'Unknown';
+      const shortRunId = runId.split('::').pop() || runId;
+      const traceName = `${method} (${shortRunId})`;
 
       return {
         x,
         y,
         type: 'scatter',
         mode,
-        name: runId,
+        name: traceName,
         line: { width: mode === 'lines' ? 2 : 1.5, color },
         marker: { size: mode === 'lines+markers' ? 6 : 0, color, symbol: 'circle', line: { color: '#000', width: 1 } }
       };
@@ -227,16 +235,25 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
     const traces: Record<string, { y: number[], type: 'box', name: string, marker: { color: string }, boxpoints?: boolean | string }> = {};
     
     gameRuns.forEach(runId => {
-      const groupVal = getGroupValue(runId, groupBy);
-      const groupName = String(groupVal);
+      const cfg = runInfos[runId]?.config || {};
+      const method = cfg.method || (cfg.algorithm ? String(cfg.algorithm).toUpperCase() : 'LeGPS');
+      
+      let groupName = method;
+      if (groupBy === 'noise (all)') {
+        groupName = `${method} (sigma0: ${cfg.sigma0 ?? 0}, obs: ${cfg.obs_noise_std ?? 0})`;
+      } else if (groupBy !== 'method') {
+        const groupVal = getGroupValue(runId, groupBy);
+        groupName = `${method} (${groupBy}: ${groupVal})`;
+      }
       
       const runData = metricsData[runId] || [];
       
       let maxScore = -Infinity;
       for (let i = 0; i < runData.length; i++) {
         const item = runData[i];
-        if (item.ret_mean !== undefined) {
-          maxScore = Math.max(maxScore, item.ret_mean);
+        const scoreVal = item.ret_mean ?? item['charts/episodic_return'] ?? item['charts/episodic_game_return'] ?? item['eval/episodic_return_mod'] ?? item['episodic_return'] ?? item['reward'];
+        if (scoreVal !== undefined) {
+          maxScore = Math.max(maxScore, scoreVal);
         }
       }
       
@@ -245,7 +262,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
           traces[groupName] = {
             y: [],
             type: 'box',
-            name: `${groupBy}: ${groupName}`,
+            name: groupName,
             marker: { color: '' }
           };
         }
@@ -284,16 +301,25 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
 
     games.forEach(game => {
       runsByGame[game].forEach(runId => {
-        const groupVal = getGroupValue(runId, groupBy);
-        const groupName = String(groupVal);
+        const cfg = runInfos[runId]?.config || {};
+        const method = cfg.method || (cfg.algorithm ? String(cfg.algorithm).toUpperCase() : 'LeGPS');
+        
+        let groupName = method;
+        if (groupBy === 'noise (all)') {
+          groupName = `${method} (sigma0: ${cfg.sigma0 ?? 0}, obs: ${cfg.obs_noise_std ?? 0})`;
+        } else if (groupBy !== 'method') {
+          const groupVal = getGroupValue(runId, groupBy);
+          groupName = `${method} (${groupBy}: ${groupVal})`;
+        }
         
         const runData = metricsData[runId] || [];
         
         let maxScore = -Infinity;
         for (let i = 0; i < runData.length; i++) {
           const item = runData[i];
-          if (item.ret_mean !== undefined) {
-            maxScore = Math.max(maxScore, item.ret_mean);
+          const scoreVal = item.ret_mean ?? item['charts/episodic_return'] ?? item['charts/episodic_game_return'] ?? item['eval/episodic_return_mod'] ?? item['episodic_return'] ?? item['reward'];
+          if (scoreVal !== undefined) {
+            maxScore = Math.max(maxScore, scoreVal);
           }
         }
         
@@ -327,7 +353,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
       traces.push({
         y: Object.values(groupGameMax[groupName]),
         type: 'box',
-        name: `${groupBy}: ${groupName}`,
+        name: groupName,
         marker: { color: colors[idx % colors.length] }
       });
     });

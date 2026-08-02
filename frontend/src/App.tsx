@@ -24,7 +24,7 @@ function App() {
     <BrowserRouter>
       <div className="flex h-full w-full bg-[#0f111a] text-[#f8fafc]">
         {/* Sidebar */}
-        <Sidebar selectedRuns={selectedRuns} setSelectedRuns={setSelectedRuns} theme={theme} toggleTheme={toggleTheme} />
+        <Sidebar theme={theme} toggleTheme={toggleTheme} />
 
         {/* Main Content Area */}
         <main className="flex-1 flex flex-col h-full overflow-y-auto">
@@ -33,7 +33,7 @@ function App() {
             <Route path="/environments" element={<EnvironmentsView />} />
             <Route path="/compare" element={<ComparisonView selectedRuns={selectedRuns} setSelectedRuns={setSelectedRuns} theme={theme} />} />
             <Route path="/run/:runId" element={<RunDetails />} />
-            <Route path="/logs" element={<LogsExplorer selectedRuns={selectedRuns} />} />
+            <Route path="/logs" element={<LogsExplorer selectedRuns={selectedRuns} setSelectedRuns={setSelectedRuns} />} />
           </Routes>
         </main>
       </div>
