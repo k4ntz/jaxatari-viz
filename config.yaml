@@ -6,11 +6,29 @@ projects:
     runs_dir: "/Users/kantoz/Research/legps/thesis/runs"
     adapter: "cma_jsonl" # Options: cma_jsonl, standard_json, tensorboard_csv, auto
     baselines_file: "/Users/kantoz/Research/legps/thesis/data/baselines.csv"
+    performance_metric: "ret_mean"
+    primary_graphs: ["ret_mean", "best_fitness", "min_y_best"]
 
-  - name: "WandB Downloads"
-    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads"
+  - name: "WandB BlendRL"
+    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads/blendrl"
     adapter: "wandb"
     baselines_file: "/Users/kantoz/Research/legps/thesis/data/baselines.csv"
+    performance_metric: "ret_mean"
+    primary_graphs: ["ret_mean", "best_fitness"]
+
+  - name: "WandB PPO"
+    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads/ppo"
+    adapter: "wandb"
+    baselines_file: "/Users/kantoz/Research/legps/thesis/data/baselines.csv"
+    performance_metric: "charts/episodic_return"
+    primary_graphs: ["charts/episodic_return", "charts/episodic_game_return", "losses/loss"]
+
+  - name: "WandB DQN & Rainbow"
+    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads/dqn_rainbow"
+    adapter: "wandb"
+    baselines_file: "/Users/kantoz/Research/legps/thesis/data/baselines.csv"
+    performance_metric: "charts/avg_episodic_return"
+    primary_graphs: ["charts/avg_episodic_return", "losses/q_values"]
 
   # Example additional project configurations:
   # - name: "JAXAtari DQN"

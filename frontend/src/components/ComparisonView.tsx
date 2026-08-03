@@ -94,26 +94,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
         console.error("Failed to load run infos");
       }
 
-      // Fetch missing metrics data in parallel batches
-      const missingRunIds = selectedRuns.filter(id => !metricsData[id]);
-      if (missingRunIds.length > 0) {
-        const newMetrics: Record<string, any[]> = {};
-        const chunkSize = 30;
-        for (let i = 0; i < missingRunIds.length; i += chunkSize) {
-          const chunk = missingRunIds.slice(i, i + chunkSize);
-          const results = await Promise.all(
-            chunk.map(runId => 
-              fetchRunMetrics(runId)
-                .then(data => ({ runId, data }))
-                .catch(() => ({ runId, data: [] }))
-            )
-          );
-          results.forEach(res => { newMetrics[res.runId] = res.data; });
-        }
-        setMetricsData(prev => ({ ...prev, ...newMetrics }));
-      }
-
-      // Fetch baselines
+      // Fetch baselines & summary only (no 922 bulk metrics requests!)
       try {
         const baselines = await fetchBaselines();
         const bMap: Record<string, BaselineInfo> = {};
@@ -654,6 +635,8 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
             game={game} 
             gameRuns={gameRuns} 
             runInfos={runInfos}
+            metricsData={metricsData}
+            setMetricsData={setMetricsData}
             generatePlotData={generatePlotData} 
             generateBoxPlotData={generateBoxPlotData} 
             layoutBase={layoutBase} 
@@ -664,8 +647,9 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
   );
 };
 
-const GameSection = React.memo(({ game, gameRuns, runInfos, generatePlotData, generateBoxPlotData, layoutBase }: any) => {
+const GameSection = React.memo(({ game, gameRuns, runInfos, metricsData, setMetricsData, generatePlotData, generateBoxPlotData, layoutBase }: any) => {
   const [expanded, setExpanded] = useState(false);
+  const [loadingGameMetrics, setLoadingGameMetrics] = useState(false);
   const [filterOutliers, setFilterOutliers] = useState<boolean>(() => {
     const saved = localStorage.getItem(`outlier_filter_game_${game}`);
     return saved ? JSON.parse(saved) : false;
@@ -678,6 +662,28 @@ const GameSection = React.memo(({ game, gameRuns, runInfos, generatePlotData, ge
   useEffect(() => {
     localStorage.setItem(`outlier_filter_game_${game}`, JSON.stringify(filterOutliers));
   }, [filterOutliers, game]);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const missing = gameRuns.filter((id: string) => !metricsData[id]);
+    if (missing.length === 0) return;
+
+    setLoadingGameMetrics(true);
+    Promise.all(
+      missing.map((runId: string) =>
+        fetchRunMetrics(runId)
+          .then(data => ({ runId, data }))
+          .catch(() => ({ runId, data: [] }))
+      )
+    ).then(results => {
+      setMetricsData((prev: any) => {
+        const next = { ...prev };
+        results.forEach(res => { next[res.runId] = res.data; });
+        return next;
+      });
+      setLoadingGameMetrics(false);
+    });
+  }, [expanded, gameRuns, metricsData, setMetricsData]);
 
   return (
     <div className="flex flex-col relative" style={{ gap: 'var(--game-inner-gap, 0.25rem)' }}>
@@ -692,6 +698,7 @@ const GameSection = React.memo(({ game, gameRuns, runInfos, generatePlotData, ge
         <span className="badge border-indigo-500/30 text-indigo-300 bg-indigo-500/10 font-semibold">{numAlgos} Algorithm{numAlgos > 1 ? 's' : ''}</span>
         <span className="badge">{gameRuns.length} runs</span>
         <div className="flex items-center gap-2 ml-4">
+          {loadingGameMetrics && <span className="text-xs text-indigo-400 font-medium animate-pulse">Loading charts...</span>}
           <span className="text-sm text-slate-400 group-hover:text-slate-300">Deeper Analysis</span>
           <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
         </div>

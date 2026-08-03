@@ -242,7 +242,9 @@ class WandbAdapter(RunAdapter):
                             # Standardize reward / ret_mean metric
                             if "ret_mean" not in m:
                                 ret_val = (
-                                    m.get("charts/episodic_return")
+                                    m.get("charts/avg_episodic_return")
+                                    if "charts/avg_episodic_return" in m
+                                    else m.get("charts/episodic_return")
                                     if "charts/episodic_return" in m
                                     else m.get("charts/episodic_game_return")
                                     if "charts/episodic_game_return" in m
