@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import Plot from 'react-plotly.js';
-import { fetchRunMetrics, fetchRuns, fetchBaselines, type RunInfo, type BaselineInfo } from '../api';
+import { fetchRunMetrics, fetchRuns, fetchBaselines, fetchComparisonSummary, type RunInfo, type BaselineInfo } from '../api';
 import { LayoutGrid, Gamepad2, BarChart2, ChevronDown, Filter, RotateCcw } from 'lucide-react';
 import { Toggle } from './Toggle';
 
@@ -28,6 +28,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
   const [loading, setLoading] = useState(false);
   const [baselinesMap, setBaselinesMap] = useState<Record<string, BaselineInfo>>({});
   const [groupBy, setGroupBy] = useState<string>('noise (all)');
+  const [sortGamesBy, setSortGamesBy] = useState<'name' | '#Algorithms'>('name');
   const [aggFilterOutliers, setAggFilterOutliers] = useState<boolean>(() => {
     const saved = localStorage.getItem(`outlier_filter_aggregate`);
     return saved ? JSON.parse(saved) : false;
@@ -93,21 +94,24 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
         console.error("Failed to load run infos");
       }
 
-      // Fetch metrics data
-      const dataMap: Record<string, any[]> = {};
-      for (const runId of selectedRuns) {
-        if (!metricsData[runId]) {
-          try {
-            const data = await fetchRunMetrics(runId);
-            dataMap[runId] = data;
-          } catch (e) {
-            console.error(`Failed to load metrics for ${runId}`);
-          }
-        } else {
-          dataMap[runId] = metricsData[runId];
+      // Fetch missing metrics data in parallel batches
+      const missingRunIds = selectedRuns.filter(id => !metricsData[id]);
+      if (missingRunIds.length > 0) {
+        const newMetrics: Record<string, any[]> = {};
+        const chunkSize = 30;
+        for (let i = 0; i < missingRunIds.length; i += chunkSize) {
+          const chunk = missingRunIds.slice(i, i + chunkSize);
+          const results = await Promise.all(
+            chunk.map(runId => 
+              fetchRunMetrics(runId)
+                .then(data => ({ runId, data }))
+                .catch(() => ({ runId, data: [] }))
+            )
+          );
+          results.forEach(res => { newMetrics[res.runId] = res.data; });
         }
+        setMetricsData(prev => ({ ...prev, ...newMetrics }));
       }
-      setMetricsData(prev => ({ ...prev, ...dataMap }));
 
       // Fetch baselines
       try {
@@ -231,11 +235,21 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
     return (rawScore - r) / (h - r);
   };
 
+  const [summaryMap, setSummaryMap] = useState<Record<string, any>>({});
+
+  useEffect(() => {
+    fetchComparisonSummary().then((items: any[]) => {
+      const sMap: Record<string, any> = {};
+      items.forEach((item: any) => { sMap[item.id] = item; });
+      setSummaryMap(sMap);
+    }).catch(e => console.error("Summary fetch error:", e));
+  }, []);
+
   const generateBoxPlotData = (gameRuns: string[], game: string, applyFilter: boolean) => {
     const traces: Record<string, { y: number[], type: 'box', name: string, marker: { color: string }, boxpoints?: boolean | string }> = {};
     
     gameRuns.forEach(runId => {
-      const cfg = runInfos[runId]?.config || {};
+      const cfg = runInfos[runId]?.config || summaryMap[runId]?.config || {};
       const method = cfg.method || (cfg.algorithm ? String(cfg.algorithm).toUpperCase() : 'LeGPS');
       
       let groupName = method;
@@ -249,12 +263,16 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
       const runData = metricsData[runId] || [];
       
       let maxScore = -Infinity;
-      for (let i = 0; i < runData.length; i++) {
-        const item = runData[i];
-        const scoreVal = item.ret_mean ?? item['charts/episodic_return'] ?? item['charts/episodic_game_return'] ?? item['eval/episodic_return_mod'] ?? item['episodic_return'] ?? item['reward'];
-        if (scoreVal !== undefined) {
-          maxScore = Math.max(maxScore, scoreVal);
+      if (runData.length > 0) {
+        for (let i = 0; i < runData.length; i++) {
+          const item = runData[i];
+          const scoreVal = item.ret_mean ?? item['charts/episodic_return'] ?? item['charts/episodic_game_return'] ?? item['eval/episodic_return_mod'] ?? item['episodic_return'] ?? item['reward'];
+          if (scoreVal !== undefined) {
+            maxScore = Math.max(maxScore, scoreVal);
+          }
         }
+      } else if (summaryMap[runId]?.max_ret_mean !== undefined && summaryMap[runId]?.max_ret_mean !== null) {
+        maxScore = summaryMap[runId].max_ret_mean;
       }
       
       if (maxScore !== -Infinity) {
@@ -301,7 +319,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
 
     games.forEach(game => {
       runsByGame[game].forEach(runId => {
-        const cfg = runInfos[runId]?.config || {};
+        const cfg = runInfos[runId]?.config || summaryMap[runId]?.config || {};
         const method = cfg.method || (cfg.algorithm ? String(cfg.algorithm).toUpperCase() : 'LeGPS');
         
         let groupName = method;
@@ -315,12 +333,16 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
         const runData = metricsData[runId] || [];
         
         let maxScore = -Infinity;
-        for (let i = 0; i < runData.length; i++) {
-          const item = runData[i];
-          const scoreVal = item.ret_mean ?? item['charts/episodic_return'] ?? item['charts/episodic_game_return'] ?? item['eval/episodic_return_mod'] ?? item['episodic_return'] ?? item['reward'];
-          if (scoreVal !== undefined) {
-            maxScore = Math.max(maxScore, scoreVal);
+        if (runData.length > 0) {
+          for (let i = 0; i < runData.length; i++) {
+            const item = runData[i];
+            const scoreVal = item.ret_mean ?? item['charts/episodic_return'] ?? item['charts/episodic_game_return'] ?? item['eval/episodic_return_mod'] ?? item['episodic_return'] ?? item['reward'];
+            if (scoreVal !== undefined) {
+              maxScore = Math.max(maxScore, scoreVal);
+            }
           }
+        } else if (summaryMap[runId]?.max_ret_mean !== undefined && summaryMap[runId]?.max_ret_mean !== null) {
+          maxScore = summaryMap[runId].max_ret_mean;
         }
         
         if (maxScore !== -Infinity) {
@@ -404,6 +426,21 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
       font: { family: 'Inter', color: isDark ? '#fff' : '#0f172a' }
     }
   };
+
+  const sortedGameEntries = React.useMemo(() => {
+    const entries = Object.entries(runsByGame);
+    if (sortGamesBy === '#Algorithms') {
+      entries.sort((a, b) => {
+        const algosA = new Set(a[1].map(r => runInfos[r]?.config?.method || 'Unknown')).size;
+        const algosB = new Set(b[1].map(r => runInfos[r]?.config?.method || 'Unknown')).size;
+        if (algosB !== algosA) return algosB - algosA; // Most algorithms first
+        return a[0].localeCompare(b[0]);
+      });
+    } else {
+      entries.sort((a, b) => a[0].localeCompare(b[0]));
+    }
+    return entries;
+  }, [runsByGame, sortGamesBy, runInfos]);
 
   return (
     <div className="p-8 relative">
@@ -517,30 +554,61 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
           </div>
         </div>
 
-        <div className="bg-[#16192b] border border-[#2e334d] p-6 rounded-2xl flex flex-col gap-6 mb-4">
-          <div className="flex items-center justify-between border-b border-[#2e334d] pb-4">
-            <div className="flex items-center gap-2">
-              <BarChart2 className="w-5 h-5 text-indigo-400" />
-              <h2 className="text-base font-bold text-white tracking-wide">Group Distributions By</h2>
+        {/* Sort Games & Group Distributions Controls */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-4">
+          <div className="bg-[#16192b] border border-[#2e334d] p-6 rounded-2xl flex flex-col gap-6">
+            <div className="flex items-center justify-between border-b border-[#2e334d] pb-4">
+              <div className="flex items-center gap-2">
+                <Gamepad2 className="w-5 h-5 text-indigo-400" />
+                <h2 className="text-base font-bold text-white tracking-wide">Sort Game Cards By</h2>
+              </div>
+              <span className="badge text-[11px] py-0.5 px-2 bg-indigo-500/20 border-indigo-500/30 text-indigo-300">
+                Active: {sortGamesBy === 'name' ? 'Name' : '#Algorithms'}
+              </span>
             </div>
-            <span className="badge text-[11px] py-0.5 px-2 bg-indigo-500/20 border-indigo-500/30 text-indigo-300">
-              Active: {groupBy}
-            </span>
+            <div className="filter-chip-group">
+              <button
+                onClick={() => setSortGamesBy('name')}
+                className={`filter-chip ${sortGamesBy === 'name' ? 'active active-indigo' : ''}`}
+              >
+                <span className={`filter-chip-indicator ${sortGamesBy === 'name' ? 'bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.8)]' : 'bg-slate-600'}`} />
+                <span className="filter-chip-label">Name (Alphabetical)</span>
+              </button>
+              <button
+                onClick={() => setSortGamesBy('#Algorithms')}
+                className={`filter-chip ${sortGamesBy === '#Algorithms' ? 'active active-indigo' : ''}`}
+              >
+                <span className={`filter-chip-indicator ${sortGamesBy === '#Algorithms' ? 'bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.8)]' : 'bg-slate-600'}`} />
+                <span className="filter-chip-label"># Algorithms Available</span>
+              </button>
+            </div>
           </div>
-          <div className="filter-chip-group">
-            {availableGroupKeys.map(key => {
-              const active = groupBy === key;
-              return (
-                <button
-                  key={key}
-                  onClick={() => setGroupBy(key)}
-                  className={`filter-chip ${active ? 'active active-indigo' : ''}`}
-                >
-                  <span className={`filter-chip-indicator ${active ? 'bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.8)]' : 'bg-slate-600'}`} />
-                  <span className="filter-chip-label">{key}</span>
-                </button>
-              );
-            })}
+
+          <div className="bg-[#16192b] border border-[#2e334d] p-6 rounded-2xl flex flex-col gap-6">
+            <div className="flex items-center justify-between border-b border-[#2e334d] pb-4">
+              <div className="flex items-center gap-2">
+                <BarChart2 className="w-5 h-5 text-indigo-400" />
+                <h2 className="text-base font-bold text-white tracking-wide">Group Distributions By</h2>
+              </div>
+              <span className="badge text-[11px] py-0.5 px-2 bg-indigo-500/20 border-indigo-500/30 text-indigo-300">
+                Active: {groupBy}
+              </span>
+            </div>
+            <div className="filter-chip-group">
+              {availableGroupKeys.map(key => {
+                const active = groupBy === key;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setGroupBy(key)}
+                    className={`filter-chip ${active ? 'active active-indigo' : ''}`}
+                  >
+                    <span className={`filter-chip-indicator ${active ? 'bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.8)]' : 'bg-slate-600'}`} />
+                    <span className="filter-chip-label">{key}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
@@ -580,11 +648,12 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
           </div>
         )}
 
-        {Object.entries(runsByGame).map(([game, gameRuns]) => (
+        {sortedGameEntries.map(([game, gameRuns]) => (
           <GameSection 
             key={game} 
             game={game} 
             gameRuns={gameRuns} 
+            runInfos={runInfos}
             generatePlotData={generatePlotData} 
             generateBoxPlotData={generateBoxPlotData} 
             layoutBase={layoutBase} 
@@ -595,12 +664,16 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
   );
 };
 
-const GameSection = ({ game, gameRuns, generatePlotData, generateBoxPlotData, layoutBase }: any) => {
+const GameSection = React.memo(({ game, gameRuns, runInfos, generatePlotData, generateBoxPlotData, layoutBase }: any) => {
   const [expanded, setExpanded] = useState(false);
   const [filterOutliers, setFilterOutliers] = useState<boolean>(() => {
     const saved = localStorage.getItem(`outlier_filter_game_${game}`);
     return saved ? JSON.parse(saved) : false;
   });
+
+  const numAlgos = React.useMemo(() => {
+    return new Set(gameRuns.map((r: string) => runInfos[r]?.config?.method || 'Unknown')).size;
+  }, [gameRuns, runInfos]);
 
   useEffect(() => {
     localStorage.setItem(`outlier_filter_game_${game}`, JSON.stringify(filterOutliers));
@@ -616,6 +689,7 @@ const GameSection = ({ game, gameRuns, generatePlotData, generateBoxPlotData, la
           <Gamepad2 className="w-6 h-6 text-indigo-400" />
         </div>
         <h2 className="text-2xl font-bold text-white capitalize flex-1">{game}</h2>
+        <span className="badge border-indigo-500/30 text-indigo-300 bg-indigo-500/10 font-semibold">{numAlgos} Algorithm{numAlgos > 1 ? 's' : ''}</span>
         <span className="badge">{gameRuns.length} runs</span>
         <div className="flex items-center gap-2 ml-4">
           <span className="text-sm text-slate-400 group-hover:text-slate-300">Deeper Analysis</span>
@@ -704,6 +778,6 @@ const GameSection = ({ game, gameRuns, generatePlotData, generateBoxPlotData, la
       )}
     </div>
   );
-};
+});
 
 export default ComparisonView;

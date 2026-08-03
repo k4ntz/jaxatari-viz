@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 import yaml
 
+_PARSED_METRICS_CACHE: Dict[str, tuple[float, List[Dict[str, Any]]]] = {}
+
 class RunAdapter:
     """Base interface for parsing run metrics, configs, and logs."""
     
@@ -125,25 +127,59 @@ class WandbAdapter(RunAdapter):
                 cfg = meta.get("config", {})
                 if not isinstance(cfg, dict):
                     cfg = {}
-                # Automatically detect game, method and model
-                if "game" not in cfg or cfg["game"] == "unknown_game":
-                    cfg["game"] = cfg.get("env_name", cfg.get("env", meta.get("name", "unknown_game")))
+                cfg_lower = {str(k).lower(): v for k, v in cfg.items()} if isinstance(cfg, dict) else {}
 
-                if "method" not in cfg:
-                    algo = str(cfg.get("algorithm", "")).lower()
-                    proj_name = str(cfg.get("wandb_project_name", "")).lower()
-                    if algo == "blender" or "blender" in cfg or "blend" in proj_name or "blend" in run_path.name.lower():
-                        cfg["method"] = "BlendRL"
-                    elif algo:
-                        cfg["method"] = algo.title()
+                # Extract representation variant: OC vs Pixels
+                is_oc = "oc" in run_path.name.lower() or "oc" in meta.get("name", "").lower() or cfg_lower.get("pixel_based") is False
+                is_pixel = "pixel" in run_path.name.lower() or "pixel" in meta.get("name", "").lower() or cfg_lower.get("pixel_based") is True
+
+                # Automatically detect game
+                if "game" not in cfg or cfg["game"] == "unknown_game":
+                    game_val = cfg_lower.get("env_id") or cfg_lower.get("env_name") or cfg_lower.get("game") or cfg_lower.get("env") or meta.get("name", "unknown_game")
+                    if isinstance(game_val, str) and "_" in game_val and not any(k in game_val.lower() for k in ("kangaroo", "seaquest", "skiing", "montezuma", "space_invaders", "spaceinvaders", "asteroids", "bankheist")):
+                        possible_game = game_val.split("_")[0]
+                        cfg["game"] = possible_game if possible_game.lower() not in ("ppo", "cma", "dqn", "rainbow") else game_val
                     else:
-                        cfg["method"] = "BlendRL"
+                        cfg["game"] = game_val
+
+                # Determine base method & append representation tag e.g. PPO (pixels), PPO (OC), DQN (pixels), DQN (OC)
+                exp_name = str(cfg_lower.get("exp_name") or cfg_lower.get("method") or cfg_lower.get("algorithm") or cfg_lower.get("alg") or "").lower()
+                algo = str(cfg_lower.get("algorithm") or cfg_lower.get("alg") or "").lower()
+                proj_name = str(cfg_lower.get("wandb_project_name") or cfg_lower.get("project") or "").lower()
+                run_name = meta.get("name", run_path.name).lower()
+                
+                base_method = "Unknown"
+                if algo == "blender" or "blender" in cfg_lower or "blend" in proj_name or "blend" in run_name:
+                    base_method = "BlendRL"
+                elif "rainbow" in exp_name or "rainbow" in algo or "rainbow" in run_name:
+                    base_method = "Rainbow"
+                elif "dqn" in exp_name or "dqn" in algo or "dqn" in run_name:
+                    base_method = "DQN"
+                elif "ppo" in exp_name or "ppo" in algo or "ppo" in run_name:
+                    base_method = "PPO"
+                elif algo:
+                    base_method = algo.title()
+                elif exp_name:
+                    base_method = exp_name.upper() if exp_name in ("ppo", "dqn", "cma", "rainbow") else exp_name.title()
+                else:
+                    base_method = "PPO" if "ppo" in run_name else "BlendRL"
+
+                if is_oc and not base_method.endswith("(OC)"):
+                    cfg["method"] = f"{base_method} (OC)"
+                elif is_pixel and not base_method.endswith("(pixels)"):
+                    cfg["method"] = f"{base_method} (pixels)"
+                else:
+                    cfg["method"] = base_method
 
                 if "model" not in cfg or cfg["model"] in ("wandb_run", "unknown_model"):
-                    val_model = cfg.get("valuation_model")
-                    exp_name = str(cfg.get("exp_name", ""))
+                    val_model = cfg_lower.get("valuation_model")
+                    exp_name = str(cfg_lower.get("exp_name") or "")
                     if isinstance(val_model, dict) and val_model.get("type") == "mlp":
                         cfg["model"] = "MLP"
+                    elif is_oc:
+                        cfg["model"] = "OC (Object Centric)"
+                    elif is_pixel:
+                        cfg["model"] = "Pixels"
                     elif exp_name.startswith("mlp"):
                         cfg["model"] = "MLP"
                     else:
@@ -173,6 +209,11 @@ class WandbAdapter(RunAdapter):
     def parse_metrics(self, run_path: Path) -> List[Dict[str, Any]]:
         history_csv = run_path / "history.csv"
         if history_csv.exists():
+            mtime = history_csv.stat().st_mtime
+            cache_key = str(history_csv.resolve())
+            if cache_key in _PARSED_METRICS_CACHE and _PARSED_METRICS_CACHE[cache_key][0] == mtime:
+                return _PARSED_METRICS_CACHE[cache_key][1]
+
             metrics = []
             try:
                 import csv
@@ -222,6 +263,7 @@ class WandbAdapter(RunAdapter):
 
                             metrics.append(m)
                 if metrics:
+                    _PARSED_METRICS_CACHE[cache_key] = (mtime, metrics)
                     return metrics
             except Exception as exc:
                 print("Error reading history.csv:", exc)

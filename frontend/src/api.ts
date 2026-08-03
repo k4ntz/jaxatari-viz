@@ -54,6 +54,11 @@ export const fetchRunMetrics = async (runId: string) => {
   return response.data.data;
 };
 
+export const fetchComparisonSummary = async () => {
+  const response = await axios.get(`${API_BASE}/comparison_summary`);
+  return response.data.summary;
+};
+
 export const fetchRunLogs = async (runId: string) => {
   const response = await axios.get(`${API_BASE}/runs/${encodeURIComponent(runId)}/logs`);
   return response.data.logs;

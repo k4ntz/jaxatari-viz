@@ -45,6 +45,30 @@ def get_project_by_name(project_name: str) -> Optional[Dict[str, Any]]:
 def get_app_config():
     return APP_CONFIG
 
+def scan_run_folders(runs_dir: Path) -> List[tuple[Path, str]]:
+    """Yield (run_path, relative_run_folder) for direct or nested run directories."""
+    found = []
+    if not runs_dir.exists():
+        return found
+
+    for entry in os.scandir(runs_dir):
+        if entry.is_dir():
+            p = Path(entry.path)
+            # Check if this directory itself is a run folder
+            if (p / "meta.json").exists() or (p / "config.json").exists() or (p / "results.json").exists() or (p / "history.csv").exists() or (p / "best.json").exists():
+                found.append((p, p.name))
+            else:
+                # Check 1 level deeper for nested project folders (e.g. blendrl/, ppo/)
+                try:
+                    for sub_entry in os.scandir(p):
+                        if sub_entry.is_dir():
+                            sp = Path(sub_entry.path)
+                            if (sp / "meta.json").exists() or (sp / "config.json").exists() or (sp / "results.json").exists() or (sp / "history.csv").exists() or (sp / "best.json").exists():
+                                found.append((sp, f"{p.name}/{sp.name}"))
+                except Exception:
+                    pass
+    return found
+
 @app.get("/api/runs", response_model=List[RunInfo])
 def get_runs():
     runs = []
@@ -58,41 +82,125 @@ def get_runs():
         if not runs_dir.exists():
             continue
 
-        for entry in os.scandir(runs_dir):
-            if entry.is_dir():
-                run_folder_name = entry.name
-                run_path = Path(entry.path)
-                
-                config_data = adapter.parse_config(run_path)
-                if config_data is None:
-                    continue
+        for run_path, run_folder_name in scan_run_folders(runs_dir):
+            config_data = adapter.parse_config(run_path)
+            if config_data is None:
+                continue
 
-                # Ensure game, method, and model fields exist
-                if "game" not in config_data or config_data["game"] == "unknown_game":
-                    config_data["game"] = config_data.get("env_name", config_data.get("env", "unknown_game"))
-                if "method" not in config_data or config_data["method"] == "unknown_method":
-                    config_data["method"] = config_data.get("algorithm", "BlendRL" if "blend" in str(config_data.get("wandb_project_name", "")).lower() else "unknown_method")
-                if "model" not in config_data or config_data["model"] == "unknown_model":
-                    config_data["model"] = config_data.get("exp_name", config_data.get("method", "unknown_model"))
+            # Ensure game, method, and model fields exist
+            if "game" not in config_data or config_data["game"] == "unknown_game":
+                config_data["game"] = config_data.get("env_name", config_data.get("env", "unknown_game"))
+            if "method" not in config_data or config_data["method"] == "unknown_method":
+                config_data["method"] = config_data.get("algorithm", "BlendRL" if "blend" in str(config_data.get("wandb_project_name", "")).lower() else "unknown_method")
+            if "model" not in config_data or config_data["model"] == "unknown_model":
+                config_data["model"] = config_data.get("exp_name", config_data.get("method", "unknown_model"))
 
-                has_metrics = len(adapter.parse_metrics(run_path)) > 0
-                raw_logs = adapter.parse_logs(run_path, runs_dir, config_data)
-                has_logs = "No logs found for this run." not in raw_logs
+            metrics_data = adapter.parse_metrics(run_path) or []
+            has_metrics = len(metrics_data) > 0
+            raw_logs = adapter.parse_logs(run_path, runs_dir, config_data)
+            has_logs = "No logs found for this run." not in raw_logs
 
-                # Composite ID incorporating project to avoid collisions across projects
-                composite_id = f"{project_name}::{run_folder_name}"
+            # Composite ID incorporating project to avoid collisions across projects
+            composite_id = f"{project_name}::{run_folder_name}"
 
-                runs.append(RunInfo(
-                    id=composite_id,
-                    project_name=project_name,
-                    config=config_data,
-                    has_metrics=has_metrics,
-                    has_logs=has_logs
-                ))
+            runs.append(RunInfo(
+                id=composite_id,
+                project_name=project_name,
+                config=config_data,
+                has_metrics=has_metrics,
+                has_logs=has_logs
+            ))
 
     # Sort runs by run folder name (descending)
     runs.sort(key=lambda x: x.id.split("::")[-1], reverse=True)
     return runs
+
+import hashlib
+
+CACHE_DIR = Path(__file__).parent / ".cache"
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+def compute_run_hash(run_path: Path) -> str:
+    fingerprints = [f"{f.name}:{f.stat().st_mtime}:{f.stat().st_size}" for f in sorted(run_path.glob("*")) if f.is_file()]
+    return hashlib.sha256(";".join(fingerprints).encode()).hexdigest()
+
+def get_run_cached_data(run_path: Path, rel_folder: str, adapter) -> Dict[str, Any]:
+    run_hash = compute_run_hash(run_path)
+    cache_file = CACHE_DIR / f"{hashlib.md5(rel_folder.encode()).hexdigest()}.json"
+
+    if cache_file.exists():
+        try:
+            with open(cache_file, "r") as f:
+                cdata = json.load(f)
+            if cdata.get("hash") == run_hash:
+                return cdata
+        except Exception:
+            pass
+
+    metrics = adapter.parse_metrics(run_path) or []
+    max_ret = None
+    max_fitness = None
+    min_y = None
+
+    for m in metrics:
+        if isinstance(m, dict):
+            if "ret_mean" in m and m["ret_mean"] is not None:
+                max_ret = max(max_ret, m["ret_mean"]) if max_ret is not None else m["ret_mean"]
+            if "best_fitness" in m and m["best_fitness"] is not None:
+                max_fitness = max(max_fitness, m["best_fitness"]) if max_fitness is not None else m["best_fitness"]
+            if "min_y_best" in m and m["min_y_best"] is not None:
+                min_y = min(min_y, m["min_y_best"]) if min_y is not None else m["min_y_best"]
+
+    cdata = {
+        "hash": run_hash,
+        "max_ret_mean": max_ret,
+        "max_best_fitness": max_fitness,
+        "min_y_best": min_y,
+        "metrics": metrics
+    }
+
+    try:
+        with open(cache_file, "w") as f:
+            json.dump(cdata, f)
+    except Exception as e:
+        print("Cache write error:", e)
+
+    return cdata
+
+@app.get("/api/comparison_summary")
+def get_comparison_summary():
+    summary_list = []
+    projects = APP_CONFIG.get("projects", [])
+
+    for proj in projects:
+        project_name = proj.get("name", "Default Project")
+        runs_dir = Path(proj.get("runs_dir", ""))
+        adapter = get_adapter(proj.get("adapter", "auto"))
+
+        if not runs_dir.exists():
+            continue
+
+        for run_path, run_folder_name in scan_run_folders(runs_dir):
+            config_data = adapter.parse_config(run_path)
+            if config_data is None:
+                continue
+
+            cdata = get_run_cached_data(run_path, run_folder_name, adapter)
+            composite_id = f"{project_name}::{run_folder_name}"
+
+            summary_list.append({
+                "id": composite_id,
+                "project_name": project_name,
+                "game": config_data.get("game", "unknown_game"),
+                "method": config_data.get("method", "unknown_method"),
+                "model": config_data.get("model", "unknown_model"),
+                "config": config_data,
+                "max_ret_mean": cdata.get("max_ret_mean"),
+                "max_best_fitness": cdata.get("max_best_fitness"),
+                "min_y_best": cdata.get("min_y_best")
+            })
+
+    return {"summary": summary_list}
 
 @app.get("/api/runs/{run_id:path}/metrics")
 def get_run_metrics(run_id: str):
@@ -111,8 +219,8 @@ def get_run_metrics(run_id: str):
         raise HTTPException(status_code=404, detail="Run not found")
 
     adapter = get_adapter(proj.get("adapter", "auto"))
-    metrics_data = adapter.parse_metrics(run_path)
-    return {"data": metrics_data}
+    cdata = get_run_cached_data(run_path, run_folder, adapter)
+    return {"data": cdata.get("metrics", [])}
 
 @app.get("/api/runs/{run_id:path}/logs")
 def get_run_logs(run_id: str):
