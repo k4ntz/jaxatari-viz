@@ -1,6 +1,7 @@
 import os
 import json
 import csv
+import time
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -69,8 +70,26 @@ def scan_run_folders(runs_dir: Path) -> List[tuple[Path, str]]:
                     pass
     return found
 
+_RUNS_CACHE = {"timestamp": 0, "data": []}
+_SUMMARY_CACHE = {"timestamp": 0, "data": []}
+
+def get_runs_dir_mtime() -> float:
+    max_mt = 0.0
+    for proj in APP_CONFIG.get("projects", []):
+        rdir = Path(proj.get("runs_dir", ""))
+        if rdir.exists():
+            try:
+                max_mt = max(max_mt, rdir.stat().st_mtime)
+            except Exception:
+                pass
+    return max_mt
+
 @app.get("/api/runs", response_model=List[RunInfo])
 def get_runs():
+    current_mtime = get_runs_dir_mtime()
+    if _RUNS_CACHE["data"] and _RUNS_CACHE["timestamp"] >= current_mtime:
+        return _RUNS_CACHE["data"]
+
     runs = []
     projects = APP_CONFIG.get("projects", [])
 
@@ -95,10 +114,9 @@ def get_runs():
             if "model" not in config_data or config_data["model"] == "unknown_model":
                 config_data["model"] = config_data.get("exp_name", config_data.get("method", "unknown_model"))
 
-            metrics_data = adapter.parse_metrics(run_path) or []
-            has_metrics = len(metrics_data) > 0
-            raw_logs = adapter.parse_logs(run_path, runs_dir, config_data)
-            has_logs = "No logs found for this run." not in raw_logs
+            # Fast existence checks without reading full CSV/log files
+            has_metrics = (run_path / "history.csv").exists() or (run_path / "results.json").exists() or (run_path / "best.json").exists() or (run_path / "progress.csv").exists() or (run_path / "meta.json").exists()
+            has_logs = (run_path / "output.log").exists() or (run_path / "stdout.log").exists() or (run_path / "train.log").exists() or any(run_path.glob("*.log")) or any(run_path.glob("*.txt"))
 
             # Composite ID incorporating project to avoid collisions across projects
             composite_id = f"{project_name}::{run_folder_name}"
@@ -113,6 +131,8 @@ def get_runs():
 
     # Sort runs by run folder name (descending)
     runs.sort(key=lambda x: x.id.split("::")[-1], reverse=True)
+    _RUNS_CACHE["data"] = runs
+    _RUNS_CACHE["timestamp"] = time.time()
     return runs
 
 import hashlib
@@ -169,6 +189,10 @@ def get_run_cached_data(run_path: Path, rel_folder: str, adapter) -> Dict[str, A
 
 @app.get("/api/comparison_summary")
 def get_comparison_summary():
+    current_mtime = get_runs_dir_mtime()
+    if _SUMMARY_CACHE["data"] and _SUMMARY_CACHE["timestamp"] >= current_mtime:
+        return {"summary": _SUMMARY_CACHE["data"]}
+
     summary_list = []
     projects = APP_CONFIG.get("projects", [])
 
@@ -200,6 +224,8 @@ def get_comparison_summary():
                 "min_y_best": cdata.get("min_y_best")
             })
 
+    _SUMMARY_CACHE["data"] = summary_list
+    _SUMMARY_CACHE["timestamp"] = time.time()
     return {"summary": summary_list}
 
 @app.get("/api/runs/{run_id:path}/metrics")
@@ -243,7 +269,18 @@ def get_run_logs(run_id: str):
     config_data = adapter.parse_config(run_path) or {}
     logs = adapter.parse_logs(run_path, runs_dir, config_data)
 
-    return {"logs": logs}
+GAME_METADATA_FILE = Path(__file__).parent / "game_metadata.json"
+GAME_METADATA = {}
+if GAME_METADATA_FILE.exists():
+    try:
+        with open(GAME_METADATA_FILE, "r") as f:
+            GAME_METADATA = json.load(f)
+    except Exception as e:
+        print("Failed to load game_metadata.json:", e)
+
+@app.get("/api/game_metadata")
+def get_game_metadata():
+    return GAME_METADATA
 
 @app.get("/api/environments")
 def get_environments():

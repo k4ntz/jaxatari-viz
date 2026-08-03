@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { fetchRunLogs, fetchRuns, type RunInfo } from '../api';
+import { fetchRunLogs, fetchRuns, fetchGameMetadata, type RunInfo } from '../api';
 import { Terminal, Search, Filter, RotateCcw, Copy, Check, ChevronDown, ChevronUp, CheckSquare, X, ArrowUpDown, ArrowUp, ArrowDown, Gamepad2, Cpu, Calendar } from 'lucide-react';
 
 interface LogsExplorerProps {
@@ -154,6 +154,9 @@ const LogsExplorer: React.FC<LogsExplorerProps> = ({ selectedRuns, setSelectedRu
   const [selectedGames, setSelectedGames] = useState<Set<string>>(new Set());
   const [showRunList, setShowRunList] = useState(true);
 
+  // Game metadata state (categories & quality status)
+  const [gameMeta, setGameMeta] = useState<Record<string, { category: string; status: string }>>({});
+
   useEffect(() => {
     localStorage.setItem('logs_order_by', orderBy);
     localStorage.setItem('logs_order_dir', orderDirection);
@@ -168,8 +171,10 @@ const LogsExplorer: React.FC<LogsExplorerProps> = ({ selectedRuns, setSelectedRu
     }
   };
 
-  // Fetch all runs on mount
+  // Fetch all runs and metadata on mount
   useEffect(() => {
+    fetchGameMetadata().then(meta => setGameMeta(meta)).catch(e => console.error("Failed to load game metadata:", e));
+
     fetchRuns().then(data => {
       setAllRuns(data);
       setSelectedModels(new Set(data.map(r => String(r.config.model || 'unknown'))));
@@ -178,9 +183,24 @@ const LogsExplorer: React.FC<LogsExplorerProps> = ({ selectedRuns, setSelectedRu
     }).catch(err => console.error('Failed to fetch runs:', err));
   }, []);
 
-  const models = useMemo(() => Array.from(new Set(allRuns.map(r => String(r.config.model || 'unknown')))), [allRuns]);
-  const methods = useMemo(() => Array.from(new Set(allRuns.map(r => String(r.config.method || 'unknown')))), [allRuns]);
-  const games = useMemo(() => Array.from(new Set(allRuns.map(r => String(r.config.game || 'unknown')))), [allRuns]);
+  const models = useMemo(() => Array.from(new Set(allRuns.map(r => String(r.config.model || 'unknown')))).sort((a, b) => a.localeCompare(b)), [allRuns]);
+  const methods = useMemo(() => Array.from(new Set(allRuns.map(r => String(r.config.method || 'unknown')))).sort((a, b) => a.localeCompare(b)), [allRuns]);
+  const games = useMemo(() => Array.from(new Set(allRuns.map(r => String(r.config.game || 'unknown')))).sort((a, b) => a.localeCompare(b)), [allRuns]);
+
+  const getGameMetaInfo = React.useCallback((g: string) => {
+    const norm = g.toLowerCase().replace(/_/g, '');
+    return gameMeta[g] || gameMeta[norm] || { category: 'Other', status: '🥈' };
+  }, [gameMeta]);
+
+  const gameCategories = useMemo(() => {
+    const cats = new Set(games.map(g => getGameMetaInfo(g).category));
+    return Array.from(cats).sort((a, b) => a.localeCompare(b));
+  }, [games, getGameMetaInfo]);
+
+  const gameStatuses = useMemo(() => {
+    const st = new Set(games.map(g => getGameMetaInfo(g).status));
+    return Array.from(st).sort((a, b) => a.localeCompare(b));
+  }, [games, getGameMetaInfo]);
 
   const runInfoMap = useMemo(() => {
     const map = new Map<string, RunInfo>();
@@ -261,13 +281,28 @@ const LogsExplorer: React.FC<LogsExplorerProps> = ({ selectedRuns, setSelectedRu
     }
   }, [allRuns]);
 
-  const toggleFilter = (setFilter: React.Dispatch<React.SetStateAction<Set<string>>>, value: string) => {
-    setFilter(prev => {
-      const next = new Set(prev);
-      if (next.has(value)) next.delete(value);
-      else next.add(value);
-      return next;
-    });
+  const handleFilterClick = (
+    e: React.MouseEvent,
+    setFilter: React.Dispatch<React.SetStateAction<Set<string>>>,
+    value: string,
+    allItems: string[]
+  ) => {
+    const isModifier = e.ctrlKey || e.metaKey;
+    if (isModifier) {
+      setFilter(prev => {
+        if (prev.size === 1 && prev.has(value)) {
+          return new Set(allItems);
+        }
+        return new Set([value]);
+      });
+    } else {
+      setFilter(prev => {
+        const next = new Set(prev);
+        if (next.has(value)) next.delete(value);
+        else next.add(value);
+        return next;
+      });
+    }
   };
 
   const handleSelectAllMatching = () => {
@@ -432,9 +467,90 @@ const LogsExplorer: React.FC<LogsExplorerProps> = ({ selectedRuns, setSelectedRu
         {/* Filter Chip Groups */}
         <div className="flex flex-col gap-5">
           {games.length > 0 && (
-            <div className="flex flex-col gap-2.5 w-full">
+            <div className="flex flex-col gap-3 w-full">
+              {/* Quick Selectors for Category & Quality Status */}
+              <div className="flex flex-col gap-3 p-4 bg-[#12141F] border border-[#2e334d] rounded-xl">
+                {/* Category Row */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Game Category</span>
+                    <span className="text-[10px] text-slate-500">(Click to select, Ctrl/Cmd+Click to isolate)</span>
+                  </div>
+                  <div className="filter-chip-group">
+                    {gameCategories.map(cat => {
+                      const catGames = games.filter(g => getGameMetaInfo(g).category === cat);
+                      const allCatSelected = catGames.length > 0 && catGames.every(g => selectedGames.has(g));
+                      const someCatSelected = catGames.some(g => selectedGames.has(g));
+                      return (
+                        <button
+                          key={cat}
+                          onClick={e => {
+                            const isModifier = e.ctrlKey || e.metaKey;
+                            if (isModifier) {
+                              setSelectedGames(new Set(catGames));
+                            } else {
+                              setSelectedGames(prev => {
+                                const next = new Set(prev);
+                                if (allCatSelected) {
+                                  catGames.forEach(g => next.delete(g));
+                                } else {
+                                  catGames.forEach(g => next.add(g));
+                                }
+                                return next;
+                              });
+                            }
+                          }}
+                          className={`filter-chip ${allCatSelected ? 'active active-purple' : someCatSelected ? 'border-purple-500/50 text-purple-300' : ''}`}
+                        >
+                          <span className="filter-chip-label">{cat} ({catGames.length})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Quality Status Row */}
+                <div className="flex flex-col gap-2 pt-2 border-t border-[#2e334d]/60">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Quality Status</span>
+                    <span className="text-[10px] text-slate-500">(Click to select, Ctrl/Cmd+Click to isolate)</span>
+                  </div>
+                  <div className="filter-chip-group">
+                    {gameStatuses.map(st => {
+                      const stGames = games.filter(g => getGameMetaInfo(g).status === st);
+                      const allStSelected = stGames.length > 0 && stGames.every(g => selectedGames.has(g));
+                      const someStSelected = stGames.some(g => selectedGames.has(g));
+                      return (
+                        <button
+                          key={st}
+                          onClick={e => {
+                            const isModifier = e.ctrlKey || e.metaKey;
+                            if (isModifier) {
+                              setSelectedGames(new Set(stGames));
+                            } else {
+                              setSelectedGames(prev => {
+                                const next = new Set(prev);
+                                if (allStSelected) {
+                                  stGames.forEach(g => next.delete(g));
+                                } else {
+                                  stGames.forEach(g => next.add(g));
+                                }
+                                return next;
+                              });
+                            }
+                          }}
+                          className={`filter-chip ${allStSelected ? 'active active-emerald' : someStSelected ? 'border-emerald-500/50 text-emerald-300' : ''}`}
+                        >
+                          <span className="filter-chip-label">{st} ({stGames.length})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Games</span>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Individual Games</span>
                 <span className="badge text-[11px] py-0.5 px-2 bg-emerald-500/20 border-emerald-500/30 text-emerald-300">
                   {selectedGames.size} / {games.length}
                 </span>
@@ -445,10 +561,10 @@ const LogsExplorer: React.FC<LogsExplorerProps> = ({ selectedRuns, setSelectedRu
                   return (
                     <button
                       key={g}
-                      onClick={() => toggleFilter(setSelectedGames, g)}
+                      onClick={e => handleFilterClick(e, setSelectedGames, g, games)}
+                      title="Click to toggle, Ctrl+Click or Cmd+Click to isolate"
                       className={`filter-chip ${active ? 'active active-emerald' : ''}`}
                     >
-                      <span className={`filter-chip-indicator ${active ? 'bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.8)]' : 'bg-slate-600'}`} />
                       <span className="filter-chip-label">{g}</span>
                     </button>
                   );
@@ -471,10 +587,10 @@ const LogsExplorer: React.FC<LogsExplorerProps> = ({ selectedRuns, setSelectedRu
                   return (
                     <button
                       key={m}
-                      onClick={() => toggleFilter(setSelectedModels, m)}
+                      onClick={e => handleFilterClick(e, setSelectedModels, m, models)}
+                      title="Click to toggle, Ctrl+Click or Cmd+Click to isolate"
                       className={`filter-chip ${active ? 'active active-purple' : ''}`}
                     >
-                      <span className={`filter-chip-indicator ${active ? 'bg-purple-400 shadow-[0_0_6px_rgba(168,85,247,0.8)]' : 'bg-slate-600'}`} />
                       <span className="filter-chip-label">{m}</span>
                     </button>
                   );
@@ -497,10 +613,10 @@ const LogsExplorer: React.FC<LogsExplorerProps> = ({ selectedRuns, setSelectedRu
                   return (
                     <button
                       key={method}
-                      onClick={() => toggleFilter(setSelectedMethods, method)}
+                      onClick={e => handleFilterClick(e, setSelectedMethods, method, methods)}
+                      title="Click to toggle, Ctrl+Click or Cmd+Click to isolate"
                       className={`filter-chip ${active ? 'active active-indigo' : ''}`}
                     >
-                      <span className={`filter-chip-indicator ${active ? 'bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.8)]' : 'bg-slate-600'}`} />
                       <span className="filter-chip-label">{method}</span>
                     </button>
                   );

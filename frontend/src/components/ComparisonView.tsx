@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import Plot from 'react-plotly.js';
-import { fetchRunMetrics, fetchRuns, fetchBaselines, fetchComparisonSummary, type RunInfo, type BaselineInfo } from '../api';
+import { fetchRunMetrics, fetchRuns, fetchBaselines, fetchComparisonSummary, fetchGameMetadata, type RunInfo, type BaselineInfo } from '../api';
 import { LayoutGrid, Gamepad2, BarChart2, ChevronDown, Filter, RotateCcw } from 'lucide-react';
 import { Toggle } from './Toggle';
 
@@ -38,8 +38,19 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
   const [selectedMethods, setSelectedMethods] = useState<Set<string>>(new Set());
   const [selectedGames, setSelectedGames] = useState<Set<string>>(new Set());
+  const [gameMeta, setGameMeta] = useState<Record<string, { category: string; status: string }>>({});
+  const [summaryMap, setSummaryMap] = useState<Record<string, any>>({});
 
   useEffect(() => {
+    fetchComparisonSummary().then((items: any[]) => {
+      const sMap: Record<string, any> = {};
+      items.forEach((item: any) => { sMap[item.id] = item; });
+      setSummaryMap(sMap);
+    }).catch(e => console.error("Summary fetch error:", e));
+  }, []);
+
+  useEffect(() => {
+    fetchGameMetadata().then(meta => setGameMeta(meta)).catch(e => console.error("Failed to load game metadata:", e));
     fetchRuns().then(data => {
       setAllRuns(data);
       const infoMap: Record<string, RunInfo> = {};
@@ -51,9 +62,24 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
     });
   }, []);
 
-  const models = React.useMemo(() => Array.from(new Set(allRuns.map(r => String(r.config.model || 'unknown')))), [allRuns]);
-  const methods = React.useMemo(() => Array.from(new Set(allRuns.map(r => String(r.config.method || 'unknown')))), [allRuns]);
-  const games = React.useMemo(() => Array.from(new Set(allRuns.map(r => String(r.config.game || 'unknown')))), [allRuns]);
+  const models = React.useMemo(() => Array.from(new Set(allRuns.map(r => String(r.config.model || 'unknown')))).sort((a, b) => a.localeCompare(b)), [allRuns]);
+  const methods = React.useMemo(() => Array.from(new Set(allRuns.map(r => String(r.config.method || 'unknown')))).sort((a, b) => a.localeCompare(b)), [allRuns]);
+  const games = React.useMemo(() => Array.from(new Set(allRuns.map(r => String(r.config.game || 'unknown')))).sort((a, b) => a.localeCompare(b)), [allRuns]);
+
+  const getGameMetaInfo = React.useCallback((g: string) => {
+    const norm = g.toLowerCase().replace(/_/g, '');
+    return gameMeta[g] || gameMeta[norm] || { category: 'Other', status: '🥈' };
+  }, [gameMeta]);
+
+  const gameCategories = React.useMemo(() => {
+    const cats = new Set(games.map(g => getGameMetaInfo(g).category));
+    return Array.from(cats).sort((a, b) => a.localeCompare(b));
+  }, [games, getGameMetaInfo]);
+
+  const gameStatuses = React.useMemo(() => {
+    const st = new Set(games.map(g => getGameMetaInfo(g).status));
+    return Array.from(st).sort((a, b) => a.localeCompare(b));
+  }, [games, getGameMetaInfo]);
 
   useEffect(() => {
     if (!setSelectedRuns || allRuns.length === 0) return;
@@ -66,13 +92,28 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
     setSelectedRuns(matching);
   }, [selectedModels, selectedMethods, selectedGames, allRuns]);
 
-  const toggleFilter = (setFilter: React.Dispatch<React.SetStateAction<Set<string>>>, value: string) => {
-    setFilter(prev => {
-      const next = new Set(prev);
-      if (next.has(value)) next.delete(value);
-      else next.add(value);
-      return next;
-    });
+  const handleFilterClick = (
+    e: React.MouseEvent,
+    setFilter: React.Dispatch<React.SetStateAction<Set<string>>>,
+    value: string,
+    allItems: string[]
+  ) => {
+    const isModifier = e.ctrlKey || e.metaKey;
+    if (isModifier) {
+      setFilter(prev => {
+        if (prev.size === 1 && prev.has(value)) {
+          return new Set(allItems);
+        }
+        return new Set([value]);
+      });
+    } else {
+      setFilter(prev => {
+        const next = new Set(prev);
+        if (next.has(value)) next.delete(value);
+        else next.add(value);
+        return next;
+      });
+    }
   };
 
   useEffect(() => {
@@ -110,6 +151,32 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
     loadData();
   }, [selectedRuns]);
 
+  // Group selected runs by game
+  const runsByGame: Record<string, string[]> = React.useMemo(() => {
+    const map: Record<string, string[]> = {};
+    selectedRuns.forEach(runId => {
+      const game = runInfos[runId]?.config?.game || 'Unknown Game';
+      if (!map[game]) map[game] = [];
+      map[game].push(runId);
+    });
+    return map;
+  }, [selectedRuns, runInfos]);
+
+  const sortedGameEntries = React.useMemo(() => {
+    const entries = Object.entries(runsByGame);
+    if (sortGamesBy === '#Algorithms') {
+      entries.sort((a, b) => {
+        const algosA = new Set(a[1].map(r => runInfos[r]?.config?.method || 'Unknown')).size;
+        const algosB = new Set(b[1].map(r => runInfos[r]?.config?.method || 'Unknown')).size;
+        if (algosB !== algosA) return algosB - algosA; // Most algorithms first
+        return a[0].localeCompare(b[0]);
+      });
+    } else {
+      entries.sort((a, b) => a[0].localeCompare(b[0]));
+    }
+    return entries;
+  }, [runsByGame, sortGamesBy, runInfos]);
+
   if (selectedRuns.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-slate-500 flex-col gap-4 relative">
@@ -124,14 +191,6 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
     );
   }
 
-  // Group selected runs by game
-  const runsByGame: Record<string, string[]> = {};
-  selectedRuns.forEach(runId => {
-    const game = runInfos[runId]?.config?.game || 'Unknown Game';
-    if (!runsByGame[game]) runsByGame[game] = [];
-    runsByGame[game].push(runId);
-  });
-
   const availableGroupKeys = [
     'method',
     'model',
@@ -142,12 +201,22 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
     'epsilon_random'
   ];
 
+  const getNoiseHpTag = (cfg: any) => {
+    const parts = [];
+    if (cfg.sigma0 && Number(cfg.sigma0) !== 0) parts.push(`σ0: ${cfg.sigma0}`);
+    if (cfg.obs_noise_std && Number(cfg.obs_noise_std) !== 0) parts.push(`obs: ${cfg.obs_noise_std}`);
+    if (cfg.epsilon_random && Number(cfg.epsilon_random) !== 0) parts.push(`eps: ${cfg.epsilon_random}`);
+    return parts.length > 0 ? parts.join(', ') : '';
+  };
+
   const getGroupValue = (runId: string, groupKey: string) => {
     const config = runInfos[runId]?.config || {};
     if (groupKey === 'seed') return config.cma_seed ?? 'N/A';
     if (groupKey === 'noise (all)') {
-      return `sigma0: ${config.sigma0 ?? 0}, obs: ${config.obs_noise_std ?? 0}, eps: ${config.epsilon_random ?? 0}`;
+      const tag = getNoiseHpTag(config);
+      return tag || 'none';
     }
+    if (groupKey === 'sigma0') return config.sigma0 ?? 'N/A';
     const val = config[groupKey];
     if (val === undefined && groupKey === 'method') return 'LeGPS';
     return val ?? 'N/A';
@@ -215,16 +284,10 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
     if (h === r) return 0; // Avoid divide by zero
     return (rawScore - r) / (h - r);
   };
-
-  const [summaryMap, setSummaryMap] = useState<Record<string, any>>({});
-
-  useEffect(() => {
-    fetchComparisonSummary().then((items: any[]) => {
-      const sMap: Record<string, any> = {};
-      items.forEach((item: any) => { sMap[item.id] = item; });
-      setSummaryMap(sMap);
-    }).catch(e => console.error("Summary fetch error:", e));
-  }, []);
+  const formatLabelWithBreak = (str: string) => {
+    if (!str) return str;
+    return str.replace(/\s+\(/g, '<br>(');
+  };
 
   const generateBoxPlotData = (gameRuns: string[], game: string, applyFilter: boolean) => {
     const traces: Record<string, { y: number[], type: 'box', name: string, marker: { color: string }, boxpoints?: boolean | string }> = {};
@@ -233,13 +296,20 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
       const cfg = runInfos[runId]?.config || summaryMap[runId]?.config || {};
       const method = cfg.method || (cfg.algorithm ? String(cfg.algorithm).toUpperCase() : 'LeGPS');
       
-      let groupName = method;
+      let rawGroupName = method;
       if (groupBy === 'noise (all)') {
-        groupName = `${method} (sigma0: ${cfg.sigma0 ?? 0}, obs: ${cfg.obs_noise_std ?? 0})`;
+        const hpTag = getNoiseHpTag(cfg);
+        rawGroupName = hpTag ? `${method} (${hpTag})` : method;
+      } else if (groupBy === 'sigma0') {
+        rawGroupName = (cfg.sigma0 && Number(cfg.sigma0) !== 0) ? `${method} (σ0: ${cfg.sigma0})` : method;
       } else if (groupBy !== 'method') {
         const groupVal = getGroupValue(runId, groupBy);
-        groupName = `${method} (${groupBy}: ${groupVal})`;
+        if (groupVal !== 'N/A' && groupVal !== 0 && groupVal !== '0' && groupVal !== 'none') {
+          rawGroupName = `${method} (${groupBy}: ${groupVal})`;
+        }
       }
+
+      const groupName = formatLabelWithBreak(rawGroupName);
       
       const runData = metricsData[runId] || [];
       
@@ -303,13 +373,20 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
         const cfg = runInfos[runId]?.config || summaryMap[runId]?.config || {};
         const method = cfg.method || (cfg.algorithm ? String(cfg.algorithm).toUpperCase() : 'LeGPS');
         
-        let groupName = method;
+        let rawGroupName = method;
         if (groupBy === 'noise (all)') {
-          groupName = `${method} (sigma0: ${cfg.sigma0 ?? 0}, obs: ${cfg.obs_noise_std ?? 0})`;
+          const hpTag = getNoiseHpTag(cfg);
+          rawGroupName = hpTag ? `${method} (${hpTag})` : method;
+        } else if (groupBy === 'sigma0') {
+          rawGroupName = (cfg.sigma0 && Number(cfg.sigma0) !== 0) ? `${method} (σ0: ${cfg.sigma0})` : method;
         } else if (groupBy !== 'method') {
           const groupVal = getGroupValue(runId, groupBy);
-          groupName = `${method} (${groupBy}: ${groupVal})`;
+          if (groupVal !== 'N/A' && groupVal !== 0 && groupVal !== '0' && groupVal !== 'none') {
+            rawGroupName = `${method} (${groupBy}: ${groupVal})`;
+          }
         }
+
+        const groupName = formatLabelWithBreak(rawGroupName);
         
         const runData = metricsData[runId] || [];
         
@@ -384,8 +461,9 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
     paper_bgcolor: 'transparent',
     plot_bgcolor: 'transparent',
     font: { color: isDark ? '#94a3b8' : '#475569', family: 'Inter, sans-serif' },
-    margin: { t: 20, r: 20, l: 80, b: 40 },
+    margin: { t: 20, r: 20, l: 80, b: 65 },
     xaxis: { 
+      tickangle: 0,
       gridcolor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', 
       zerolinecolor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', 
       tickfont: { color: isDark ? '#64748b' : '#64748b' }
@@ -397,7 +475,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
     },
     legend: {
       orientation: 'h',
-      y: -0.2,
+      y: -0.28,
       font: { color: isDark ? '#cbd5e1' : '#334155' }
     },
     hovermode: 'closest',
@@ -407,21 +485,6 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
       font: { family: 'Inter', color: isDark ? '#fff' : '#0f172a' }
     }
   };
-
-  const sortedGameEntries = React.useMemo(() => {
-    const entries = Object.entries(runsByGame);
-    if (sortGamesBy === '#Algorithms') {
-      entries.sort((a, b) => {
-        const algosA = new Set(a[1].map(r => runInfos[r]?.config?.method || 'Unknown')).size;
-        const algosB = new Set(b[1].map(r => runInfos[r]?.config?.method || 'Unknown')).size;
-        if (algosB !== algosA) return algosB - algosA; // Most algorithms first
-        return a[0].localeCompare(b[0]);
-      });
-    } else {
-      entries.sort((a, b) => a[0].localeCompare(b[0]));
-    }
-    return entries;
-  }, [runsByGame, sortGamesBy, runInfos]);
 
   return (
     <div className="p-8 relative">
@@ -456,9 +519,90 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
 
           <div className="flex flex-col gap-6">
             {games.length > 0 && (
-              <div className="flex flex-col gap-3 w-full">
+              <div className="flex flex-col gap-4 w-full">
+                {/* Quick Selectors for Category & Quality Status */}
+                <div className="flex flex-col gap-3 p-4 bg-[#12141F] border border-[#2e334d] rounded-xl">
+                  {/* Category Row */}
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Game Category</span>
+                      <span className="text-[10px] text-slate-500">(Click to select, Ctrl/Cmd+Click to isolate)</span>
+                    </div>
+                    <div className="filter-chip-group">
+                      {gameCategories.map(cat => {
+                        const catGames = games.filter(g => getGameMetaInfo(g).category === cat);
+                        const allCatSelected = catGames.length > 0 && catGames.every(g => selectedGames.has(g));
+                        const someCatSelected = catGames.some(g => selectedGames.has(g));
+                        return (
+                          <button
+                            key={cat}
+                            onClick={e => {
+                              const isModifier = e.ctrlKey || e.metaKey;
+                              if (isModifier) {
+                                setSelectedGames(new Set(catGames));
+                              } else {
+                                setSelectedGames(prev => {
+                                  const next = new Set(prev);
+                                  if (allCatSelected) {
+                                    catGames.forEach(g => next.delete(g));
+                                  } else {
+                                    catGames.forEach(g => next.add(g));
+                                  }
+                                  return next;
+                                });
+                              }
+                            }}
+                            className={`filter-chip ${allCatSelected ? 'active active-purple' : someCatSelected ? 'border-purple-500/50 text-purple-300' : ''}`}
+                          >
+                            <span className="filter-chip-label">{cat} ({catGames.length})</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Quality Status Row */}
+                  <div className="flex flex-col gap-2 pt-2 border-t border-[#2e334d]/60">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Quality Status</span>
+                      <span className="text-[10px] text-slate-500">(Click to select, Ctrl/Cmd+Click to isolate)</span>
+                    </div>
+                    <div className="filter-chip-group">
+                      {gameStatuses.map(st => {
+                        const stGames = games.filter(g => getGameMetaInfo(g).status === st);
+                        const allStSelected = stGames.length > 0 && stGames.every(g => selectedGames.has(g));
+                        const someStSelected = stGames.some(g => selectedGames.has(g));
+                        return (
+                          <button
+                            key={st}
+                            onClick={e => {
+                              const isModifier = e.ctrlKey || e.metaKey;
+                              if (isModifier) {
+                                setSelectedGames(new Set(stGames));
+                              } else {
+                                setSelectedGames(prev => {
+                                  const next = new Set(prev);
+                                  if (allStSelected) {
+                                    stGames.forEach(g => next.delete(g));
+                                  } else {
+                                    stGames.forEach(g => next.add(g));
+                                  }
+                                  return next;
+                                });
+                              }
+                            }}
+                            className={`filter-chip ${allStSelected ? 'active active-indigo' : someStSelected ? 'border-indigo-500/50 text-indigo-300' : ''}`}
+                          >
+                            <span className="filter-chip-label">{st} ({stGames.length})</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Games</span>
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Individual Games</span>
                   <span className="badge text-[11px] py-0.5 px-2 bg-indigo-500/20 border-indigo-500/30 text-indigo-300">
                     {selectedGames.size} / {games.length}
                   </span>
@@ -469,10 +613,10 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
                     return (
                       <button
                         key={g}
-                        onClick={() => toggleFilter(setSelectedGames, g)}
+                        onClick={e => handleFilterClick(e, setSelectedGames, g, games)}
+                        title="Click to toggle, Ctrl+Click or Cmd+Click to isolate"
                         className={`filter-chip ${active ? 'active active-indigo' : ''}`}
                       >
-                        <span className={`filter-chip-indicator ${active ? 'bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.8)]' : 'bg-slate-600'}`} />
                         <span className="filter-chip-label">{g}</span>
                       </button>
                     );
@@ -495,10 +639,10 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
                     return (
                       <button
                         key={m}
-                        onClick={() => toggleFilter(setSelectedModels, m)}
+                        onClick={e => handleFilterClick(e, setSelectedModels, m, models)}
+                        title="Click to toggle, Ctrl+Click or Cmd+Click to isolate"
                         className={`filter-chip ${active ? 'active active-purple' : ''}`}
                       >
-                        <span className={`filter-chip-indicator ${active ? 'bg-purple-400 shadow-[0_0_6px_rgba(168,85,247,0.8)]' : 'bg-slate-600'}`} />
                         <span className="filter-chip-label">{m}</span>
                       </button>
                     );
@@ -521,10 +665,10 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
                     return (
                       <button
                         key={method}
-                        onClick={() => toggleFilter(setSelectedMethods, method)}
+                        onClick={e => handleFilterClick(e, setSelectedMethods, method, methods)}
+                        title="Click to toggle, Ctrl+Click or Cmd+Click to isolate"
                         className={`filter-chip ${active ? 'active active-emerald' : ''}`}
                       >
-                        <span className={`filter-chip-indicator ${active ? 'bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.8)]' : 'bg-slate-600'}`} />
                         <span className="filter-chip-label">{method}</span>
                       </button>
                     );
@@ -552,14 +696,12 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
                 onClick={() => setSortGamesBy('name')}
                 className={`filter-chip ${sortGamesBy === 'name' ? 'active active-indigo' : ''}`}
               >
-                <span className={`filter-chip-indicator ${sortGamesBy === 'name' ? 'bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.8)]' : 'bg-slate-600'}`} />
                 <span className="filter-chip-label">Name (Alphabetical)</span>
               </button>
               <button
                 onClick={() => setSortGamesBy('#Algorithms')}
                 className={`filter-chip ${sortGamesBy === '#Algorithms' ? 'active active-indigo' : ''}`}
               >
-                <span className={`filter-chip-indicator ${sortGamesBy === '#Algorithms' ? 'bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.8)]' : 'bg-slate-600'}`} />
                 <span className="filter-chip-label"># Algorithms Available</span>
               </button>
             </div>
@@ -584,7 +726,6 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
                     onClick={() => setGroupBy(key)}
                     className={`filter-chip ${active ? 'active active-indigo' : ''}`}
                   >
-                    <span className={`filter-chip-indicator ${active ? 'bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.8)]' : 'bg-slate-600'}`} />
                     <span className="filter-chip-label">{key}</span>
                   </button>
                 );
