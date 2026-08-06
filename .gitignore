@@ -1,0 +1,17 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local backend cache
+backend/.cache/
+
+# Node & Frontend build
+frontend/node_modules/
+frontend/dist/
+node_modules/
+dist/
+
+# Environments & OS
+.env
+.DS_Store
