@@ -6,14 +6,19 @@ export interface RunConfig {
   model?: string;
   noise?: number;
   method?: string;
+  backend?: string;
+  obs_type?: string;
   [key: string]: any;
 }
 
 export interface RunInfo {
   id: string;
+  project_name: string;
   config: RunConfig;
   has_metrics: boolean;
   has_logs: boolean;
+  backend?: string;
+  obs_type?: string;
 }
 
 let runsCache: Promise<RunInfo[]> | null = null;
@@ -21,6 +26,7 @@ let environmentsCache: Promise<EnvironmentInfo[]> | null = null;
 let baselinesCache: Promise<BaselineInfo[]> | null = null;
 let summaryCache: Promise<any> | null = null;
 let metadataCache: Promise<Record<string, { category: string; status: string }>> | null = null;
+let configCache: Promise<any> | null = null;
 const metricsCacheMap = new Map<string, Promise<any>>();
 
 export const clearApiCache = () => {
@@ -29,7 +35,15 @@ export const clearApiCache = () => {
   baselinesCache = null;
   summaryCache = null;
   metadataCache = null;
+  configCache = null;
   metricsCacheMap.clear();
+};
+
+export const fetchAppConfig = async () => {
+  if (!configCache) {
+    configCache = axios.get(`${API_BASE}/config`).then(res => res.data);
+  }
+  return configCache;
 };
 
 export const fetchRuns = async (forceRefresh = false): Promise<RunInfo[]> => {
@@ -98,12 +112,21 @@ export const fetchRunLogs = async (runId: string) => {
   return response.data.logs;
 };
 
+export interface VideoStatus {
+  exists: boolean;
+  rendering?: boolean;
+  progress?: number;
+  stage?: string;
+  video_url: string | null;
+  error?: string | null;
+}
+
 export const renderRunVideo = async (runId: string, iter: number = 0) => {
-  const response = await axios.post(`${API_BASE}/runs/${runId}/render?iter=${iter}`);
+  const response = await axios.post(`${API_BASE}/runs/${encodeURIComponent(runId)}/render?iter=${iter}`);
   return response.data.video_url;
 };
 
-export const checkRunVideo = async (runId: string, iter: number = 0) => {
-  const response = await axios.get(`${API_BASE}/runs/${runId}/video_status?iter=${iter}`);
+export const checkRunVideo = async (runId: string, iter: number = 0): Promise<VideoStatus> => {
+  const response = await axios.get(`${API_BASE}/runs/${encodeURIComponent(runId)}/video_status?iter=${iter}`);
   return response.data;
 };

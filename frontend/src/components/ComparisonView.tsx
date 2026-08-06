@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import Plot from 'react-plotly.js';
-import { fetchRunMetrics, fetchRuns, fetchBaselines, fetchComparisonSummary, fetchGameMetadata, type RunInfo, type BaselineInfo } from '../api';
+import { fetchRunMetrics, fetchRuns, fetchBaselines, fetchComparisonSummary, fetchGameMetadata, fetchAppConfig, type RunInfo, type BaselineInfo } from '../api';
 import { LayoutGrid, Gamepad2, BarChart2, ChevronDown, Filter, RotateCcw } from 'lucide-react';
 import { Toggle } from './Toggle';
 
@@ -8,6 +8,7 @@ interface ComparisonProps {
   selectedRuns: string[];
   setSelectedRuns?: React.Dispatch<React.SetStateAction<string[]>>;
   theme?: string;
+  activeTab?: 'jaxatari' | 'vs_ale';
 }
 
 const filterOutliersIQR = (data: number[]) => {
@@ -21,14 +22,16 @@ const filterOutliersIQR = (data: number[]) => {
   return data.filter(x => x >= lowerBound && x <= upperBound);
 };
 
-const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRuns, theme = 'dark' }) => {
+const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRuns, theme = 'dark', activeTab = 'jaxatari' }) => {
+  const compareTab = activeTab;
   const [metricsData, setMetricsData] = useState<Record<string, any[]>>({});
   const [allRuns, setAllRuns] = useState<RunInfo[]>([]);
   const [runInfos, setRunInfos] = useState<Record<string, RunInfo>>({});
   const [loading, setLoading] = useState(false);
   const [baselinesMap, setBaselinesMap] = useState<Record<string, BaselineInfo>>({});
   const [groupBy, setGroupBy] = useState<string>('noise (all)');
-  const [sortGamesBy, setSortGamesBy] = useState<'name' | '#Algorithms'>('name');
+  const [sortGamesBy, setSortGamesBy] = useState<'name' | '#Algorithms' | 'Algorithm'>('#Algorithms');
+  const [selectedSortAlgo, setSelectedSortAlgo] = useState<string | null>(null);
   const [aggFilterOutliers, setAggFilterOutliers] = useState<boolean>(() => {
     const saved = localStorage.getItem(`outlier_filter_aggregate`);
     return saved ? JSON.parse(saved) : false;
@@ -40,8 +43,15 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
   const [selectedGames, setSelectedGames] = useState<Set<string>>(new Set());
   const [gameMeta, setGameMeta] = useState<Record<string, { category: string; status: string }>>({});
   const [summaryMap, setSummaryMap] = useState<Record<string, any>>({});
+  const [configColors, setConfigColors] = useState<Record<string, string>>({});
 
   useEffect(() => {
+    fetchAppConfig().then(cfg => {
+      if (cfg && cfg.algorithm_colors) {
+        setConfigColors(cfg.algorithm_colors);
+      }
+    }).catch(e => console.error("Config fetch error:", e));
+
     fetchComparisonSummary().then((items: any[]) => {
       const sMap: Record<string, any> = {};
       items.forEach((item: any) => { sMap[item.id] = item; });
@@ -151,7 +161,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
     loadData();
   }, [selectedRuns]);
 
-  // Group selected runs by game
+  // Group selected runs by game (filtering out environments if an algorithm filter is selected)
   const runsByGame: Record<string, string[]> = React.useMemo(() => {
     const map: Record<string, string[]> = {};
     selectedRuns.forEach(runId => {
@@ -159,8 +169,36 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
       if (!map[game]) map[game] = [];
       map[game].push(runId);
     });
+
+    if (sortGamesBy === 'Algorithm' && selectedSortAlgo) {
+      const target = selectedSortAlgo.toLowerCase();
+      const filteredMap: Record<string, string[]> = {};
+      for (const [game, runIds] of Object.entries(map)) {
+        const hasAlgo = runIds.some(r => {
+          const m = (runInfos[r]?.config?.method || runInfos[r]?.config?.algorithm || '').toLowerCase();
+          return m.includes(target) || target.includes(m);
+        });
+        if (hasAlgo) {
+          filteredMap[game] = runIds;
+        }
+      }
+      return filteredMap;
+    }
+
     return map;
-  }, [selectedRuns, runInfos]);
+  }, [selectedRuns, runInfos, sortGamesBy, selectedSortAlgo]);
+
+  const availableAlgorithms = React.useMemo(() => {
+    const algos = new Set<string>();
+    allRuns.forEach(r => {
+      const m = r.config?.method || r.config?.algorithm;
+      if (m) {
+        const clean = String(m).replace(/\s*\((pixels|oc)\)\s*/gi, '').trim();
+        if (clean) algos.add(clean);
+      }
+    });
+    return Array.from(algos).sort((a, b) => a.localeCompare(b));
+  }, [allRuns]);
 
   const sortedGameEntries = React.useMemo(() => {
     const entries = Object.entries(runsByGame);
@@ -222,11 +260,56 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
     return val ?? 'N/A';
   };
 
-  const colors = ['#818cf8', '#c084fc', '#34d399', '#f472b6', '#fbbf24', '#f87171', '#a78bfa', '#2dd4bf'];
+  const COLOR_PALETTE = [
+    '#818cf8', // Indigo
+    '#34d399', // Emerald
+    '#c084fc', // Purple
+    '#f472b6', // Pink
+    '#fbbf24', // Amber
+    '#38bdf8', // Sky
+    '#f87171', // Red
+    '#a78bfa', // Violet
+    '#2dd4bf', // Teal
+    '#fb923c'  // Orange
+  ];
+
+  const FIXED_ALGO_COLORS: Record<string, string> = {
+    'legps': '#818cf8',        // Indigo for LeGPS
+    'ppo': '#34d399',          // Emerald for PPO
+    'ppo baseline': '#8b5cf6', // Violet for PPO Baseline
+    'dqn': '#38bdf8',          // Sky Blue for DQN
+    'dqn baseline': '#ec4899', // Pink for DQN Baseline
+    'cma-es': '#fbbf24',       // Amber for CMA-ES
+    'cmaes': '#fbbf24',
+  };
+
+  const getAlgorithmColor = (name: string): string => {
+    if (!name) return COLOR_PALETTE[0];
+    const cleanName = name.toLowerCase().replace(/<br>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (configColors[cleanName]) {
+      return configColors[cleanName];
+    }
+    if (FIXED_ALGO_COLORS[cleanName]) {
+      return FIXED_ALGO_COLORS[cleanName];
+    }
+    const merged = { ...configColors, ...FIXED_ALGO_COLORS };
+    for (const [key, color] of Object.entries(merged)) {
+      if (cleanName.startsWith(key)) {
+        return color;
+      }
+    }
+    let hash = 0;
+    for (let i = 0; i < cleanName.length; i++) {
+      hash = (hash << 5) - hash + cleanName.charCodeAt(i);
+      hash |= 0;
+    }
+    const index = Math.abs(hash) % COLOR_PALETTE.length;
+    return COLOR_PALETTE[index];
+  };
 
   const generatePlotData = (gameRuns: string[], game: string, metricKey: string, mode: 'lines' | 'lines+markers' = 'lines+markers') => {
     let maxX = 0;
-    const traces: any[] = gameRuns.map((runId, idx) => {
+    const traces: any[] = gameRuns.map((runId) => {
       const runData = metricsData[runId] || [];
       const x = [];
       const y = [];
@@ -243,11 +326,11 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
         }
       }
 
-      const color = colors[idx % colors.length];
       const cfg = runInfos[runId]?.config || {};
       const method = cfg.method || 'Unknown';
       const shortRunId = runId.split('::').pop() || runId;
       const traceName = `${method} (${shortRunId})`;
+      const color = getAlgorithmColor(method);
 
       return {
         x,
@@ -260,14 +343,14 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
       };
     });
 
-    if (metricKey === 'ret_mean') {
+    if (metricKey === 'ret_mean' && compareTab === 'vs_ale') {
        let bGame = game;
        if (bGame === 'montezuma') bGame = 'montezuma_revenge';
        const b = baselinesMap[bGame];
        if (b) {
          const baselineX = [0, maxX || 100];
-         traces.push({ x: baselineX, y: [b.ppo, b.ppo], type: 'scatter', mode: 'lines', name: 'PPO Baseline', line: { color: '#8b5cf6', width: 2, dash: 'dash' }, marker: {size: 0} });
-         traces.push({ x: baselineX, y: [b.dqn, b.dqn], type: 'scatter', mode: 'lines', name: 'DQN Baseline', line: { color: '#ec4899', width: 2, dash: 'dash' }, marker: {size: 0} });
+         traces.push({ x: baselineX, y: [b.ppo, b.ppo], type: 'scatter', mode: 'lines', name: 'PPO Baseline', line: { color: getAlgorithmColor('PPO Baseline'), width: 2, dash: 'dash' }, marker: {size: 0} });
+         traces.push({ x: baselineX, y: [b.dqn, b.dqn], type: 'scatter', mode: 'lines', name: 'DQN Baseline', line: { color: getAlgorithmColor('DQN Baseline'), width: 2, dash: 'dash' }, marker: {size: 0} });
        }
     }
 
@@ -339,29 +422,31 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
       }
     });
     
-    const result = Object.values(traces).map((trace, idx) => {
+    const result = Object.values(traces).map((trace) => {
       if (applyFilter) {
         trace.y = filterOutliersIQR(trace.y);
         trace.boxpoints = false;
       } else {
         trace.boxpoints = 'outliers';
       }
-      trace.marker.color = colors[idx % colors.length];
+      trace.marker.color = getAlgorithmColor(trace.name);
       return trace;
     });
 
-    let bGame = game;
-    if (bGame === 'montezuma') bGame = 'montezuma_revenge';
-    const b = baselinesMap[bGame];
-    if (b) {
-      result.push({ y: [getHNS(game, b.ppo)], type: 'box', name: 'PPO Baseline', marker: { color: '#8b5cf6' }, boxpoints: false } as any);
-      result.push({ y: [getHNS(game, b.dqn)], type: 'box', name: 'DQN Baseline', marker: { color: '#ec4899' }, boxpoints: false } as any);
+    if (compareTab === 'vs_ale') {
+      let bGame = game;
+      if (bGame === 'montezuma') bGame = 'montezuma_revenge';
+      const b = baselinesMap[bGame];
+      if (b) {
+        result.push({ y: [getHNS(game, b.ppo)], type: 'box', name: 'PPO Baseline', marker: { color: getAlgorithmColor('PPO Baseline') }, boxpoints: false } as any);
+        result.push({ y: [getHNS(game, b.dqn)], type: 'box', name: 'DQN Baseline', marker: { color: getAlgorithmColor('DQN Baseline') }, boxpoints: false } as any);
+      }
     }
 
     return result;
   };
 
-  const generateAggregateBoxPlotData = (applyFilter: boolean) => {
+  const generateAggregateBoxPlotData = (applyFilter: boolean, obsTypeFilter?: 'pixels' | 'oc') => {
     const groupGameMax: Record<string, Record<string, number>> = {};
     const dqnPoints: number[] = [];
     const ppoPoints: number[] = [];
@@ -370,6 +455,10 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
 
     games.forEach(game => {
       runsByGame[game].forEach(runId => {
+        const info = runInfos[runId];
+        const obs = info?.obs_type || info?.config?.obs_type || 'pixels';
+        if (obsTypeFilter && obs !== obsTypeFilter) return;
+
         const cfg = runInfos[runId]?.config || summaryMap[runId]?.config || {};
         const method = cfg.method || (cfg.algorithm ? String(cfg.algorithm).toUpperCase() : 'LeGPS');
         
@@ -429,17 +518,20 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
 
     const traces: any[] = [];
     
-    Object.keys(groupGameMax).forEach((groupName, idx) => {
+    Object.keys(groupGameMax).forEach((groupName) => {
       traces.push({
         y: Object.values(groupGameMax[groupName]),
         type: 'box',
         name: groupName,
-        marker: { color: colors[idx % colors.length] }
+        marker: { color: getAlgorithmColor(groupName) }
       });
     });
     
-    traces.push({ y: ppoPoints, type: 'box', name: 'PPO Baseline', marker: { color: '#8b5cf6' } });
-    traces.push({ y: dqnPoints, type: 'box', name: 'DQN Baseline', marker: { color: '#ec4899' } });
+    // Baselines only make sense in 'vs_ale' mode for Pixel-based RL
+    if (compareTab === 'vs_ale' && (!obsTypeFilter || obsTypeFilter === 'pixels')) {
+      traces.push({ y: ppoPoints, type: 'box', name: 'PPO Baseline', marker: { color: getAlgorithmColor('PPO Baseline') } });
+      traces.push({ y: dqnPoints, type: 'box', name: 'DQN Baseline', marker: { color: getAlgorithmColor('DQN Baseline') } });
+    }
 
     if (applyFilter) {
       traces.forEach(trace => {
@@ -488,12 +580,17 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
 
   return (
     <div className="p-8 relative">
-      <div className="flex items-end justify-between mb-8 pb-6 border-b border-[#2e334d]">
+      <div className="flex items-center justify-between mb-8 pb-6 border-b border-[#2e334d]">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2 tracking-tight">Run Comparison</h1>
-          <p className="text-slate-400">Viewing comparative metrics across <span className="text-indigo-400 font-medium">{selectedRuns.length}</span> selected runs.</p>
+          <p className="text-slate-400">
+            Viewing comparative metrics across <span className="text-indigo-400 font-medium">{selectedRuns.length}</span> selected runs.
+          </p>
         </div>
-        {loading && <div className="badge animate-pulse border-indigo-500 text-indigo-400 bg-indigo-500/10">Syncing data...</div>}
+        
+        <div className="flex items-center gap-4">
+          {loading && <div className="badge animate-pulse border-indigo-500 text-indigo-400 bg-indigo-500/10">Syncing data...</div>}
+        </div>
       </div>
 
       <div className="flex flex-col" style={{ gap: 'var(--game-outer-gap, 3.5rem)' }}>
@@ -688,22 +785,58 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
                 <h2 className="text-base font-bold text-white tracking-wide">Sort Game Cards By</h2>
               </div>
               <span className="badge text-[11px] py-0.5 px-2 bg-indigo-500/20 border-indigo-500/30 text-indigo-300">
-                Active: {sortGamesBy === 'name' ? 'Name' : '#Algorithms'}
+                Active: {sortGamesBy === 'name' ? 'Name' : sortGamesBy === '#Algorithms' ? '#Algorithms' : `Algorithm (${selectedSortAlgo})`}
               </span>
             </div>
-            <div className="filter-chip-group">
-              <button
-                onClick={() => setSortGamesBy('name')}
-                className={`filter-chip ${sortGamesBy === 'name' ? 'active active-indigo' : ''}`}
-              >
-                <span className="filter-chip-label">Name (Alphabetical)</span>
-              </button>
-              <button
-                onClick={() => setSortGamesBy('#Algorithms')}
-                className={`filter-chip ${sortGamesBy === '#Algorithms' ? 'active active-indigo' : ''}`}
-              >
-                <span className="filter-chip-label"># Algorithms Available</span>
-              </button>
+            <div className="flex flex-col gap-4">
+              <div className="filter-chip-group">
+                <button
+                  onClick={() => { setSortGamesBy('#Algorithms'); setSelectedSortAlgo(null); }}
+                  className={`filter-chip ${sortGamesBy === '#Algorithms' ? 'active active-indigo' : ''}`}
+                >
+                  <span className="filter-chip-label"># Algorithms Available</span>
+                </button>
+                <button
+                  onClick={() => { setSortGamesBy('name'); setSelectedSortAlgo(null); }}
+                  className={`filter-chip ${sortGamesBy === 'name' ? 'active active-indigo' : ''}`}
+                >
+                  <span className="filter-chip-label">Name (Alphabetical)</span>
+                </button>
+              </div>
+
+              {availableAlgorithms.length > 0 && (
+                <div className="flex flex-col gap-2 pt-3 border-t border-[#2e334d]/60">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Filter By Algorithm Presence</span>
+                    <span className="text-[10px] text-slate-500">(Only show environments where this algorithm was run)</span>
+                  </div>
+                  <div className="filter-chip-group">
+                    {availableAlgorithms.map(algo => {
+                      const isActive = sortGamesBy === 'Algorithm' && selectedSortAlgo === algo;
+                      const color = getAlgorithmColor(algo);
+                      return (
+                        <button
+                          key={algo}
+                          onClick={() => {
+                            if (isActive) {
+                              setSortGamesBy('#Algorithms');
+                              setSelectedSortAlgo(null);
+                            } else {
+                              setSortGamesBy('Algorithm');
+                              setSelectedSortAlgo(algo);
+                            }
+                          }}
+                          className={`filter-chip ${isActive ? 'active active-emerald' : ''}`}
+                          style={isActive ? { borderColor: color, backgroundColor: `${color}25`, color: '#ffffff' } : {}}
+                        >
+                          <span className="w-2 h-2 rounded-full inline-block mr-1.5" style={{ backgroundColor: color }} />
+                          <span className="filter-chip-label">{algo}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -734,39 +867,96 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
           </div>
         </div>
 
-        {Object.keys(runsByGame).length > 0 && Object.keys(baselinesMap).length > 0 && (
+        {Object.keys(runsByGame).length > 0 && (
           <div className="flex flex-col gap-6 relative">
             <div className="flex items-center gap-3 mb-2">
               <div className="p-2 bg-indigo-500/20 rounded-lg border border-indigo-500/30">
                 <BarChart2 className="w-6 h-6 text-indigo-400" />
               </div>
               <h2 className="text-2xl font-bold text-white">All Games Aggregate Performance</h2>
-              <span className="badge ml-2">vs. Baselines</span>
+              {compareTab === 'vs_ale' && <span className="badge ml-2">vs. Baselines</span>}
             </div>
-            <div className="panel flex flex-col group">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-base font-semibold text-white tracking-wide">Human Normalized Score Distribution (All Selected Games)</h3>
-                <div className="flex items-center gap-4">
-                  <label className="flex items-center gap-3 cursor-pointer group/toggle">
-                    <span className={`text-sm font-medium transition-colors ${aggFilterOutliers ? 'text-indigo-300' : 'text-slate-400'}`}>Filter Outliers</span>
-                    <Toggle 
-                      checked={aggFilterOutliers}
-                      onChange={setAggFilterOutliers}
+
+            {compareTab === 'vs_ale' ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Pixel-based Aggregate Panel */}
+                <div className="panel flex flex-col group bg-[#16192b]">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h3 className="text-base font-semibold text-white tracking-wide">Pixel-based RL (All Selected Games)</h3>
+                      <p className="text-xs text-slate-400">JAXAtari (Pixel) vs. ALE (In-house) & Reported Baselines</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="flex items-center gap-2 cursor-pointer group/toggle">
+                        <span className={`text-xs font-medium transition-colors ${aggFilterOutliers ? 'text-indigo-300' : 'text-slate-400'}`}>Filter Outliers</span>
+                        <Toggle checked={aggFilterOutliers} onChange={setAggFilterOutliers} />
+                      </label>
+                      <div className="w-2 h-2 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.8)]" />
+                    </div>
+                  </div>
+                  <div className="w-full">
+                    <Plot
+                      data={generateAggregateBoxPlotData(aggFilterOutliers, 'pixels') as any}
+                      layout={{ ...layoutBase, yaxis: { ...layoutBase.yaxis, title: { text: 'Normalized Score', font: { color: '#64748b' } } } }}
+                      useResizeHandler={true}
+                      style={{ width: '100%', height: '400px' }}
+                      config={{ responsive: true, displayModeBar: false }}
                     />
-                  </label>
-                  <div className="w-2 h-2 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.8)]" />
+                  </div>
+                </div>
+
+                {/* Object-Centric (OC) Aggregate Panel */}
+                <div className="panel flex flex-col group bg-[#16192b]">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h3 className="text-base font-semibold text-white tracking-wide">Object-Centric (OC) RL (All Selected Games)</h3>
+                      <p className="text-xs text-slate-400">JAXAtari (OC) vs. OCAtari</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="flex items-center gap-2 cursor-pointer group/toggle">
+                        <span className={`text-xs font-medium transition-colors ${aggFilterOutliers ? 'text-indigo-300' : 'text-slate-400'}`}>Filter Outliers</span>
+                        <Toggle checked={aggFilterOutliers} onChange={setAggFilterOutliers} />
+                      </label>
+                      <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                    </div>
+                  </div>
+                  <div className="w-full">
+                    <Plot
+                      data={generateAggregateBoxPlotData(aggFilterOutliers, 'oc') as any}
+                      layout={{ ...layoutBase, yaxis: { ...layoutBase.yaxis, title: { text: 'Normalized Score', font: { color: '#64748b' } } } }}
+                      useResizeHandler={true}
+                      style={{ width: '100%', height: '400px' }}
+                      config={{ responsive: true, displayModeBar: false }}
+                    />
+                  </div>
                 </div>
               </div>
-              <div className="w-full">
-                <Plot
-                  data={generateAggregateBoxPlotData(aggFilterOutliers) as any}
-                  layout={{ ...layoutBase, yaxis: { ...layoutBase.yaxis, title: { text: 'Normalized Score', font: { color: '#64748b' } } } }}
-                  useResizeHandler={true}
-                  style={{ width: '100%', height: '400px' }}
-                  config={{ responsive: true, displayModeBar: false }}
-                />
+            ) : (
+              <div className="panel flex flex-col group">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-base font-semibold text-white tracking-wide">Human Normalized Score Distribution (All Selected Games)</h3>
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-3 cursor-pointer group/toggle">
+                      <span className={`text-sm font-medium transition-colors ${aggFilterOutliers ? 'text-indigo-300' : 'text-slate-400'}`}>Filter Outliers</span>
+                      <Toggle 
+                        checked={aggFilterOutliers}
+                        onChange={setAggFilterOutliers}
+                      />
+                    </label>
+                    <div className="w-2 h-2 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.8)]" />
+                  </div>
+                </div>
+                <div className="w-full">
+                  <Plot
+                    data={generateAggregateBoxPlotData(aggFilterOutliers) as any}
+                    layout={{ ...layoutBase, yaxis: { ...layoutBase.yaxis, title: { text: 'Normalized Score', font: { color: '#64748b' } } } }}
+                    useResizeHandler={true}
+                    style={{ width: '100%', height: '400px' }}
+                    config={{ responsive: true, displayModeBar: false }}
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -781,6 +971,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
             generatePlotData={generatePlotData} 
             generateBoxPlotData={generateBoxPlotData} 
             layoutBase={layoutBase} 
+            compareTab={compareTab}
           />
         ))}
       </div>
@@ -788,7 +979,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
   );
 };
 
-const GameSection = React.memo(({ game, gameRuns, runInfos, metricsData, setMetricsData, generatePlotData, generateBoxPlotData, layoutBase }: any) => {
+const GameSection = React.memo(({ game, gameRuns, runInfos, metricsData, setMetricsData, generatePlotData, generateBoxPlotData, layoutBase, compareTab }: any) => {
   const [expanded, setExpanded] = useState(false);
   const [loadingGameMetrics, setLoadingGameMetrics] = useState(false);
   const [filterOutliers, setFilterOutliers] = useState<boolean>(() => {
@@ -798,6 +989,22 @@ const GameSection = React.memo(({ game, gameRuns, runInfos, metricsData, setMetr
 
   const numAlgos = React.useMemo(() => {
     return new Set(gameRuns.map((r: string) => runInfos[r]?.config?.method || 'Unknown')).size;
+  }, [gameRuns, runInfos]);
+
+  const pixelRuns = React.useMemo(() => {
+    return gameRuns.filter((r: string) => {
+      const info = runInfos[r];
+      const obs = info?.obs_type || info?.config?.obs_type || 'pixels';
+      return obs === 'pixels';
+    });
+  }, [gameRuns, runInfos]);
+
+  const ocRuns = React.useMemo(() => {
+    return gameRuns.filter((r: string) => {
+      const info = runInfos[r];
+      const obs = info?.obs_type || info?.config?.obs_type;
+      return obs === 'oc';
+    });
   }, [gameRuns, runInfos]);
 
   useEffect(() => {
@@ -845,30 +1052,98 @@ const GameSection = React.memo(({ game, gameRuns, runInfos, metricsData, setMetr
         </div>
       </div>
 
-      <div className="panel flex flex-col group">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-base font-semibold text-white tracking-wide">Human Normalized Score Distribution</h3>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-3 cursor-pointer group/toggle">
-              <span className={`text-sm font-medium transition-colors ${filterOutliers ? 'text-indigo-300' : 'text-slate-400'}`}>Filter Outliers</span>
-              <Toggle 
-                checked={filterOutliers}
-                onChange={setFilterOutliers}
-              />
-            </label>
-            <div className="w-2 h-2 rounded-full bg-orange-400 shadow-[0_0_8px_rgba(251,146,60,0.8)]" />
+      {compareTab === 'vs_ale' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Pixel-based Panel */}
+          <div className="panel flex flex-col group bg-[#16192b]">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-base font-semibold text-white tracking-wide">Pixel-based RL</h3>
+                <p className="text-xs text-slate-400">JAXAtari (Pixel) vs. ALE (In-house) & Reported Baselines</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 cursor-pointer group/toggle">
+                  <span className={`text-xs font-medium transition-colors ${filterOutliers ? 'text-indigo-300' : 'text-slate-400'}`}>Filter Outliers</span>
+                  <Toggle checked={filterOutliers} onChange={setFilterOutliers} />
+                </label>
+                <div className="w-2 h-2 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.8)]" />
+              </div>
+            </div>
+            <div className="w-full">
+              {pixelRuns.length > 0 ? (
+                <Plot
+                  data={generateBoxPlotData(pixelRuns, game, filterOutliers) as any}
+                  layout={{ ...layoutBase, yaxis: { ...layoutBase.yaxis, title: { text: 'Normalized Score', font: { color: '#64748b' } } } }}
+                  useResizeHandler={true}
+                  style={{ width: '100%', height: '380px' }}
+                  config={{ responsive: true, displayModeBar: false }}
+                />
+              ) : (
+                <div className="h-[380px] flex items-center justify-center text-slate-500 text-sm">
+                  No Pixel-based runs selected for {game}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Object-Centric (OC) Panel */}
+          <div className="panel flex flex-col group bg-[#16192b]">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-base font-semibold text-white tracking-wide">Object-Centric (OC) RL</h3>
+                <p className="text-xs text-slate-400">JAXAtari (OC) vs. OCAtari</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 cursor-pointer group/toggle">
+                  <span className={`text-xs font-medium transition-colors ${filterOutliers ? 'text-indigo-300' : 'text-slate-400'}`}>Filter Outliers</span>
+                  <Toggle checked={filterOutliers} onChange={setFilterOutliers} />
+                </label>
+                <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+              </div>
+            </div>
+            <div className="w-full">
+              {ocRuns.length > 0 ? (
+                <Plot
+                  data={generateBoxPlotData(ocRuns, game, filterOutliers) as any}
+                  layout={{ ...layoutBase, yaxis: { ...layoutBase.yaxis, title: { text: 'Normalized Score', font: { color: '#64748b' } } } }}
+                  useResizeHandler={true}
+                  style={{ width: '100%', height: '380px' }}
+                  config={{ responsive: true, displayModeBar: false }}
+                />
+              ) : (
+                <div className="h-[380px] flex items-center justify-center text-slate-500 text-sm">
+                  No Object-Centric runs selected for {game}
+                </div>
+              )}
+            </div>
           </div>
         </div>
-        <div className="w-full">
-          <Plot
-            data={generateBoxPlotData(gameRuns, game, filterOutliers) as any}
-            layout={{ ...layoutBase, yaxis: { ...layoutBase.yaxis, title: { text: 'Normalized Score', font: { color: '#64748b' } } } }}
-            useResizeHandler={true}
-            style={{ width: '100%', height: '400px' }}
-            config={{ responsive: true, displayModeBar: false }}
-          />
+      ) : (
+        <div className="panel flex flex-col group">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-base font-semibold text-white tracking-wide">Human Normalized Score Distribution</h3>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-3 cursor-pointer group/toggle">
+                <span className={`text-sm font-medium transition-colors ${filterOutliers ? 'text-indigo-300' : 'text-slate-400'}`}>Filter Outliers</span>
+                <Toggle 
+                  checked={filterOutliers}
+                  onChange={setFilterOutliers}
+                />
+              </label>
+              <div className="w-2 h-2 rounded-full bg-orange-400 shadow-[0_0_8px_rgba(251,146,60,0.8)]" />
+            </div>
+          </div>
+          <div className="w-full">
+            <Plot
+              data={generateBoxPlotData(gameRuns, game, filterOutliers) as any}
+              layout={{ ...layoutBase, yaxis: { ...layoutBase.yaxis, title: { text: 'Normalized Score', font: { color: '#64748b' } } } }}
+              useResizeHandler={true}
+              style={{ width: '100%', height: '400px' }}
+              config={{ responsive: true, displayModeBar: false }}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {expanded && (
         <div className="p-6 bg-slate-800/20 border border-slate-700/50 rounded-2xl flex flex-col gap-6 animate-in fade-in slide-in-from-top-4 duration-300">

@@ -35,6 +35,8 @@ class RunInfo(BaseModel):
     config: Dict[str, Any]
     has_metrics: bool
     has_logs: bool
+    backend: str = "jaxatari"
+    obs_type: str = "pixels"
 
 def get_project_by_name(project_name: str) -> Optional[Dict[str, Any]]:
     for proj in APP_CONFIG.get("projects", []):
@@ -98,6 +100,9 @@ def get_runs():
         runs_dir = Path(proj.get("runs_dir", ""))
         adapter = get_adapter(proj.get("adapter", "auto"))
 
+        proj_backend = proj.get("backend", "jaxatari")
+        proj_obs_type = proj.get("obs_type", "pixels")
+
         if not runs_dir.exists():
             continue
 
@@ -114,6 +119,21 @@ def get_runs():
             if "model" not in config_data or config_data["model"] == "unknown_model":
                 config_data["model"] = config_data.get("exp_name", config_data.get("method", "unknown_model"))
 
+            # Determine run-specific backend and obs_type
+            backend = config_data.get("backend", proj_backend)
+            if "PIXEL_BASED" in config_data:
+                obs_type = "pixels" if config_data["PIXEL_BASED"] else "oc"
+            elif "_pixel_" in run_folder_name.lower():
+                obs_type = "pixels"
+            elif "_oc_" in run_folder_name.lower():
+                obs_type = "oc"
+            else:
+                obs_type = config_data.get("obs_type", proj_obs_type)
+
+            # Store backend and obs_type directly on config_data as well
+            config_data["backend"] = backend
+            config_data["obs_type"] = obs_type
+
             # Fast existence checks without reading full CSV/log files
             has_metrics = (run_path / "history.csv").exists() or (run_path / "results.json").exists() or (run_path / "best.json").exists() or (run_path / "progress.csv").exists() or (run_path / "meta.json").exists()
             has_logs = (run_path / "output.log").exists() or (run_path / "stdout.log").exists() or (run_path / "train.log").exists() or any(run_path.glob("*.log")) or any(run_path.glob("*.txt"))
@@ -126,7 +146,9 @@ def get_runs():
                 project_name=project_name,
                 config=config_data,
                 has_metrics=has_metrics,
-                has_logs=has_logs
+                has_logs=has_logs,
+                backend=backend,
+                obs_type=obs_type
             ))
 
     # Sort runs by run folder name (descending)
@@ -268,6 +290,7 @@ def get_run_logs(run_id: str):
     adapter = get_adapter(proj.get("adapter", "auto"))
     config_data = adapter.parse_config(run_path) or {}
     logs = adapter.parse_logs(run_path, runs_dir, config_data)
+    return {"logs": logs}
 
 GAME_METADATA_FILE = Path(__file__).parent / "game_metadata.json"
 GAME_METADATA = {}
@@ -368,32 +391,44 @@ def get_environment_gif(game_id: str):
 @app.get("/api/baselines")
 def get_baselines():
     baselines = []
-    for proj in APP_CONFIG.get("projects", []):
-        baselines_file_str = proj.get("baselines_file")
-        if baselines_file_str:
-            baselines_file = Path(baselines_file_str)
-            if baselines_file.exists():
-                try:
-                    with open(baselines_file, "r") as f:
-                        reader = csv.DictReader(f)
-                        for row in reader:
-                            try:
-                                baselines.append({
-                                    "game": row.get("Game", row.get("game", "")),
-                                    "ppo": float(row.get("PPO", row.get("ppo", 0))),
-                                    "dqn": float(row.get("DQN", row.get("dqn", 0))),
-                                    "human": float(row.get("Human", row.get("human", 0))),
-                                    "random": float(row.get("Random", row.get("random", 0)))
-                                })
-                            except (ValueError, KeyError):
-                                pass
-                except Exception:
-                    pass
+    baselines_file_str = APP_CONFIG.get("ale_baselines_file")
+    if not baselines_file_str:
+        for proj in APP_CONFIG.get("projects", []):
+            if proj.get("baselines_file"):
+                baselines_file_str = proj.get("baselines_file")
+                break
+
+    if baselines_file_str:
+        baselines_file = Path(baselines_file_str)
+        if baselines_file.exists():
+            try:
+                with open(baselines_file, "r") as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        try:
+                            baselines.append({
+                                "game": row.get("Game", row.get("game", "")),
+                                "ppo": float(row.get("PPO", row.get("ppo", 0))),
+                                "dqn": float(row.get("DQN", row.get("dqn", 0))),
+                                "human": float(row.get("Human", row.get("human", 0))),
+                                "random": float(row.get("Random", row.get("random", 0)))
+                            })
+                        except (ValueError, KeyError):
+                            pass
+            except Exception:
+                pass
     return {"data": baselines}
 
-@app.get("/runs/{run_id:path}/videos/{filename:path}")
-def serve_video(run_id: str, filename: str):
-    from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request
+
+@app.api_route("/runs/{run_id:path}/videos/{filename:path}", methods=["GET", "HEAD"])
+async def serve_video(request: Request):
+    from urllib.parse import unquote
+    from starlette.staticfiles import StaticFiles
+
+    run_id = unquote(request.path_params.get("run_id", ""))
+    filename = unquote(request.path_params.get("filename", ""))
+
     if "::" in run_id:
         project_name, run_folder = run_id.split("::", 1)
     else:
@@ -412,18 +447,18 @@ def serve_video(run_id: str, filename: str):
         video_path = run_path / filename
 
     if not video_path.exists():
-        raise HTTPException(status_code=404, detail="Video file not found")
+        raise HTTPException(status_code=404, detail=f"Video file not found: {filename}")
 
-    media_type = "video/mp4"
-    if filename.endswith(".gif"):
-        media_type = "image/gif"
-    elif filename.endswith(".webm"):
-        media_type = "video/webm"
+    static_handler = StaticFiles(directory=str(video_path.parent))
+    return await static_handler.get_response(video_path.name, request.scope)
 
-    return FileResponse(video_path, media_type=media_type)
+_RENDER_JOBS: Dict[str, Dict[str, Any]] = {}
 
 @app.post("/api/runs/{run_id:path}/render")
 def render_video(run_id: str, iter: Optional[int] = 0):
+    from urllib.parse import unquote
+    run_id = unquote(run_id)
+
     if "::" in run_id:
         project_name, run_folder = run_id.split("::", 1)
     else:
@@ -458,6 +493,8 @@ def render_video(run_id: str, iter: Optional[int] = 0):
     video_filename = f"iter{iter:02d}.mp4"
     video_path = videos_dir / video_filename
 
+    job_key = f"{run_id}::{iter}"
+
     if not video_path.exists():
         render_script = Path(__file__).parent.parent.parent / "thesis" / "scripts" / "render.py"
         if not render_script.exists():
@@ -484,21 +521,50 @@ def render_video(run_id: str, iter: Optional[int] = 0):
             "--out", str(video_path)
         ]
 
+        _RENDER_JOBS[job_key] = {
+            "rendering": True,
+            "progress": 0,
+            "stage": "Initializing environment & policy...",
+            "video_url": None,
+            "error": None
+        }
+
         try:
-            res = subprocess.run(
+            import re
+            proc = subprocess.Popen(
                 cmd,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
-                timeout=120,
                 cwd=str(repo_root),
-                env=env_vars
+                env=env_vars,
+                bufsize=1
             )
-            if res.returncode != 0:
-                err_msg = res.stderr.strip() or res.stdout.strip() or f"Process exited with code {res.returncode}"
+
+            if proc.stdout:
+                while True:
+                    line = proc.stdout.readline()
+                    if not line:
+                        break
+                    line_str = line.strip()
+                    if not line_str:
+                        continue
+                    match = re.search(r"\[PROGRESS\]\s*(\d+)%\s*-\s*(.*)", line_str)
+                    if match:
+                        pct = int(match.group(1))
+                        stage = match.group(2)
+                        _RENDER_JOBS[job_key]["progress"] = pct
+                        _RENDER_JOBS[job_key]["stage"] = stage
+
+                proc.stdout.close()
+            return_code = proc.wait()
+
+            if return_code != 0:
+                err_msg = f"Rendering process exited with code {return_code}"
+                _RENDER_JOBS[job_key] = {"rendering": False, "progress": 0, "stage": "Failed", "error": err_msg}
                 raise HTTPException(status_code=500, detail=f"Rendering failed: {err_msg}")
-        except subprocess.TimeoutExpired:
-            raise HTTPException(status_code=500, detail="Rendering timed out after 120 seconds")
         except Exception as e:
+            _RENDER_JOBS[job_key] = {"rendering": False, "progress": 0, "stage": "Failed", "error": str(e)}
             if isinstance(e, HTTPException):
                 raise e
             raise HTTPException(status_code=500, detail=f"Rendering error: {str(e)}")
@@ -506,10 +572,25 @@ def render_video(run_id: str, iter: Optional[int] = 0):
     if not video_path.exists() and (videos_dir / f"iter{iter:02d}.gif").exists():
         video_filename = f"iter{iter:02d}.gif"
 
-    return {"video_url": f"/runs/{run_id}/videos/{video_filename}"}
+    v_url = f"/runs/{run_id}/videos/{video_filename}"
+    _RENDER_JOBS[job_key] = {
+        "rendering": False,
+        "progress": 100,
+        "stage": "Complete!",
+        "video_url": v_url,
+        "error": None
+    }
+
+    return {"video_url": v_url}
 
 @app.get("/api/runs/{run_id:path}/video_status")
 def get_video_status(run_id: str, iter: Optional[int] = 0):
+    from urllib.parse import unquote
+    run_id = unquote(run_id)
+
+    job_key = f"{run_id}::{iter}"
+    job_info = _RENDER_JOBS.get(job_key, {})
+
     if "::" in run_id:
         project_name, run_folder = run_id.split("::", 1)
     else:
@@ -518,28 +599,44 @@ def get_video_status(run_id: str, iter: Optional[int] = 0):
 
     proj = get_project_by_name(project_name)
     if not proj:
-        return {"exists": False, "video_url": None}
+        return {
+            "exists": False,
+            "rendering": job_info.get("rendering", False),
+            "progress": job_info.get("progress", 0),
+            "stage": job_info.get("stage", ""),
+            "video_url": None,
+            "error": job_info.get("error")
+        }
 
     run_path = Path(proj["runs_dir"]) / run_folder
     video_filename = f"iter{iter:02d}.mp4"
-    video_path = run_path / "videos" / video_filename
-    if video_path.exists():
-        return {"exists": True, "video_url": f"/runs/{run_id}/videos/{video_filename}"}
+    
+    check_paths = [
+        run_path / "videos" / video_filename,
+        run_path / "media" / "videos" / video_filename,
+        run_path / "videos" / f"iter{iter:02d}.gif",
+        run_path / "videos" / f"iter{iter:02d}.webm"
+    ]
 
-    gif_filename = f"iter{iter:02d}.gif"
-    gif_path = run_path / "videos" / gif_filename
-    if gif_path.exists():
-        return {"exists": True, "video_url": f"/runs/{run_id}/videos/{gif_filename}"}
+    for vpath in check_paths:
+        if vpath.exists():
+            return {
+                "exists": True,
+                "rendering": job_info.get("rendering", False),
+                "progress": 100,
+                "stage": "Complete!",
+                "video_url": f"/runs/{run_id}/videos/{vpath.name}",
+                "error": None
+            }
 
-    # Check for any video files in videos/ or media/videos/
-    video_dirs = [run_path / "videos", run_path / "media" / "videos"]
-    for vdir in video_dirs:
-        if vdir.exists():
-            for vfile in os.listdir(vdir):
-                if vfile.endswith((".mp4", ".gif", ".webm")):
-                    return {"exists": True, "video_url": f"/runs/{run_id}/videos/{vfile}"}
-
-    return {"exists": False, "video_url": None}
+    return {
+        "exists": False,
+        "rendering": job_info.get("rendering", False),
+        "progress": job_info.get("progress", 0),
+        "stage": job_info.get("stage", "Processing..."),
+        "video_url": None,
+        "error": job_info.get("error")
+    }
 
 if __name__ == "__main__":
     import uvicorn

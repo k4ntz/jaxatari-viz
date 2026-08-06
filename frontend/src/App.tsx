@@ -29,9 +29,11 @@ function App() {
         {/* Main Content Area */}
         <main className="flex-1 flex flex-col h-full overflow-y-auto">
           <Routes>
-            <Route path="/" element={<Navigate to="/compare" replace />} />
+            <Route path="/" element={<Navigate to="/compare_on_jaxatari" replace />} />
+            <Route path="/compare" element={<Navigate to="/compare_on_jaxatari" replace />} />
+            <Route path="/compare_on_jaxatari" element={<ComparisonView activeTab="jaxatari" selectedRuns={selectedRuns} setSelectedRuns={setSelectedRuns} theme={theme} />} />
+            <Route path="/compare_ale_jaxatari" element={<ComparisonView activeTab="vs_ale" selectedRuns={selectedRuns} setSelectedRuns={setSelectedRuns} theme={theme} />} />
             <Route path="/environments" element={<EnvironmentsView />} />
-            <Route path="/compare" element={<ComparisonView selectedRuns={selectedRuns} setSelectedRuns={setSelectedRuns} theme={theme} />} />
             <Route path="/run/:runId" element={<RunDetails />} />
             <Route path="/logs" element={<LogsExplorer selectedRuns={selectedRuns} setSelectedRuns={setSelectedRuns} />} />
           </Routes>

@@ -9,17 +9,25 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { fetchRunMetrics, fetchRunLogs, fetchRuns, renderRunVideo, checkRunVideo, type RunInfo } from '../api';
 import { ArrowLeft, Server, Settings, Terminal, Activity, Eye, Play, Film, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 
+const getFullVideoUrl = (rawUrl: string) => {
+  if (!rawUrl) return '';
+  const cleanUrl = rawUrl.startsWith('http://localhost:8000') ? rawUrl.replace('http://localhost:8000', '') : rawUrl;
+  const parts = cleanUrl.split('/').map(p => encodeURIComponent(decodeURIComponent(p)));
+  return `http://localhost:8000${parts.join('/')}`;
+};
+
 const VideoPlayer: React.FC<{ runId: string; iter: number }> = ({ runId, iter }) => {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [stage, setStage] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
     checkRunVideo(runId, iter).then(status => {
       if (isMounted && status.exists && status.video_url) {
-        const fullUrl = status.video_url.startsWith('http') ? status.video_url : `http://localhost:8000${status.video_url}`;
-        setVideoUrl(fullUrl);
+        setVideoUrl(getFullVideoUrl(status.video_url));
       }
     }).catch(() => {});
     return () => { isMounted = false; };
@@ -28,14 +36,39 @@ const VideoPlayer: React.FC<{ runId: string; iter: number }> = ({ runId, iter })
   const handleRender = async () => {
     setLoading(true);
     setError(null);
+    setProgress(5);
+    setStage('Initializing environment & policy...');
+
+    let timer: any = null;
+    const pollStatus = async () => {
+      try {
+        const st = await checkRunVideo(runId, iter);
+        if (st.progress !== undefined) setProgress(st.progress);
+        if (st.stage) setStage(st.stage);
+        if (st.exists && st.video_url) {
+          setVideoUrl(getFullVideoUrl(st.video_url));
+          setLoading(false);
+          if (timer) clearInterval(timer);
+        }
+      } catch {
+        // ignore polling errors
+      }
+    };
+
+    timer = setInterval(pollStatus, 500);
+
     try {
       const url = await renderRunVideo(runId, iter);
-      const fullUrl = url.startsWith('http') ? url : `http://localhost:8000${url}`;
-      setVideoUrl(fullUrl);
+      if (url) {
+        setVideoUrl(getFullVideoUrl(url));
+        setProgress(100);
+        setStage('Complete!');
+      }
     } catch (e: any) {
       const detail = e.response?.data?.detail || e.message || 'Failed to render video.';
       setError(`Failed to render video: ${detail}`);
     } finally {
+      if (timer) clearInterval(timer);
       setLoading(false);
     }
   };
@@ -51,8 +84,20 @@ const VideoPlayer: React.FC<{ runId: string; iter: number }> = ({ runId, iter })
         </button>
       )}
       {loading && (
-        <div className="inline-flex items-center gap-2 text-indigo-400 text-xs font-medium bg-indigo-500/5 px-3 py-1.5 rounded-lg border border-indigo-500/20">
-          <Loader2 className="w-4 h-4 animate-spin" /> Rendering rollout video frame-by-frame...
+        <div className="flex flex-col gap-2 p-3 bg-[#16192b] border border-indigo-500/30 rounded-xl max-w-sm my-2 shadow-lg">
+          <div className="flex items-center justify-between text-xs font-medium text-indigo-300 gap-2">
+            <span className="flex items-center gap-2 truncate">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400 shrink-0" />
+              <span className="truncate">{stage || 'Rendering rollout video...'}</span>
+            </span>
+            <span className="font-mono text-indigo-400 font-bold shrink-0">{progress}%</span>
+          </div>
+          <div className="w-full bg-[#1e2338] h-2 rounded-full overflow-hidden border border-[#2e334d]">
+            <div
+              className="bg-indigo-500 h-full rounded-full transition-all duration-300 ease-out shadow-[0_0_8px_rgba(99,102,241,0.8)]"
+              style={{ width: `${Math.max(5, progress)}%` }}
+            />
+          </div>
         </div>
       )}
       {error && (
@@ -62,7 +107,7 @@ const VideoPlayer: React.FC<{ runId: string; iter: number }> = ({ runId, iter })
       )}
       {videoUrl && (
         <div className="mt-3 rounded-xl overflow-hidden border border-[#2e334d] bg-black shadow-lg" style={{ width: '280px', maxWidth: '100%' }}>
-          <video src={videoUrl} controls autoPlay className="rounded-xl block" style={{ width: '280px', height: 'auto', display: 'block' }} />
+          <video key={videoUrl} src={videoUrl} controls autoPlay className="rounded-xl block" style={{ width: '280px', height: 'auto', display: 'block' }} />
         </div>
       )}
     </div>
@@ -114,7 +159,17 @@ const formatLogs = (rawLogs: string, currentRunId: string): string => {
     );
   }).join('');
 
-  // 4. Ensure Full Config details code blocks specify json language
+  // 4. Append Video player for the Best Iteration in Final Run Summary
+  formatted = formatted.replace(
+    /(##\s+🏁?\s*Final Run Summary[\s\S]*?)(?=(?:\r?\n\r?\n#|\r?\n\r?\n---|$))/g,
+    (match) => {
+      const bestIterMatch = match.match(/-\s*\*\*Best Iteration:\*\*\s*(\d+)/i) || formatted.match(/-\s*\*\*Best Iteration:\*\*\s*(\d+)/i);
+      const bestIter = bestIterMatch ? parseInt(bestIterMatch[1], 10) : 0;
+      return `${match}\n\n### 🎬 Best Iteration Video (Iter ${bestIter})\n\n<video data-runid="${currentRunId}" data-iter="${bestIter}"></video>`;
+    }
+  );
+
+  // 5. Ensure Full Config details code blocks specify json language
   formatted = formatted.replace(
     /(<summary>\s*Full Config\s*<\/summary>\s*\r?\n\r?\n```)\s*(\r?\n)/gi,
     '$1json$2'
@@ -165,7 +220,7 @@ const RunDetails: React.FC = () => {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-red-500/5 rounded-full blur-[100px] pointer-events-none" />
         <h2 className="text-3xl font-bold text-white mb-2 z-10">Run Not Found</h2>
         <p className="mb-6 z-10">The run you are looking for might have been deleted or moved.</p>
-        <button onClick={() => navigate('/compare')} className="panel flex items-center gap-2 text-indigo-400 hover:text-indigo-300 z-10 transition-all hover:-translate-y-1">
+        <button onClick={() => navigate('/compare_on_jaxatari')} className="panel flex items-center gap-2 text-indigo-400 hover:text-indigo-300 z-10 transition-all hover:-translate-y-1">
           <ArrowLeft className="w-4 h-4" /> Return to Dashboard
         </button>
       </div>

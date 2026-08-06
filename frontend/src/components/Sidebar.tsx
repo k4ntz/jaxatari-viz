@@ -1,6 +1,6 @@
-import React from 'react';
-import { NavLink } from 'react-router-dom';
-import { Activity, BarChart2, FileText, Moon, Sun, Gamepad2, Code2, BookOpen, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Activity, BarChart2, FileText, Moon, Sun, Gamepad2, Code2, BookOpen, ExternalLink, ChevronDown, Layers } from 'lucide-react';
 
 interface SidebarProps {
   theme?: string;
@@ -8,6 +8,23 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ theme = 'light', toggleTheme }) => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isCompareRoute = location.pathname.startsWith('/compare');
+  const [compareExpanded, setCompareExpanded] = useState(isCompareRoute);
+
+  useEffect(() => {
+    if (isCompareRoute) {
+      setCompareExpanded(true);
+    }
+  }, [isCompareRoute]);
+
+  const handleCompareClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setCompareExpanded(prev => !prev);
+    navigate('/compare_on_jaxatari');
+  };
+
   return (
     <div className="w-64 bg-[#16192b] border-r border-[#2e334d] h-full flex flex-col justify-between shadow-lg z-10 relative shrink-0">
       <div>
@@ -38,10 +55,41 @@ const Sidebar: React.FC<SidebarProps> = ({ theme = 'light', toggleTheme }) => {
             <Gamepad2 className="w-5 h-5" />
             <span>Environments</span>
           </NavLink>
-          <NavLink to="/compare" className={({isActive}) => `sidebar-link ${isActive ? 'active' : ''}`}>
-            <BarChart2 className="w-5 h-5" />
-            <span>Compare Runs</span>
-          </NavLink>
+
+          {/* Expandable Compare Runs Item */}
+          <div className="flex flex-col gap-1">
+            <div
+              onClick={handleCompareClick}
+              className={`sidebar-link cursor-pointer justify-between ${isCompareRoute ? 'active' : ''}`}
+            >
+              <div className="flex items-center gap-3">
+                <BarChart2 className="w-5 h-5" />
+                <span>Compare Runs</span>
+              </div>
+              <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${compareExpanded ? 'rotate-180' : ''}`} />
+            </div>
+
+            {compareExpanded && (
+              <div className="flex flex-col gap-1 ml-4 pl-3 border-l border-[#2e334d]/80 animate-in fade-in slide-in-from-top-2 duration-200">
+                <NavLink
+                  to="/compare_on_jaxatari"
+                  className={({isActive}) => `sidebar-link text-xs py-2 px-3 ${isActive ? 'active text-indigo-300 font-semibold' : 'text-slate-400 hover:text-white'}`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>On JAXAtari</span>
+                </NavLink>
+
+                <NavLink
+                  to="/compare_ale_jaxatari"
+                  className={({isActive}) => `sidebar-link text-xs py-2 px-3 ${isActive ? 'active text-indigo-300 font-semibold' : 'text-slate-400 hover:text-white'}`}
+                >
+                  <BarChart2 className="w-3.5 h-3.5" />
+                  <span>JAXAtari vs ALE</span>
+                </NavLink>
+              </div>
+            )}
+          </div>
+
           <NavLink to="/logs" className={({isActive}) => `sidebar-link ${isActive ? 'active' : ''}`}>
             <FileText className="w-5 h-5" />
             <span>Logs Explorer</span>

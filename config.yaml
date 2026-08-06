@@ -1,42 +1,92 @@
 # JAXAtari-Viz Configuration File
 # Configure multi-project run directories and adapter parsing settings.
 
+ale_baselines_file: "/Users/kantoz/Research/legps/thesis/data/baselines.csv"
+
+# Global algorithm color mappings for consistent graph visualization
+algorithm_colors:
+  legps: "#818cf8"         # Indigo
+  ppo: "#34d399"           # Emerald
+  ppo baseline: "#8b5cf6"  # Violet
+  dqn: "#38bdf8"           # Sky Blue
+  dqn baseline: "#ec4899"  # Pink
+  rainbow: "#f472b6"       # Pink Accent
+  cma-es: "#fbbf24"        # Amber
+  cmaes: "#fbbf24"
+  blendrl: "#fb923c"       # Orange
+
 projects:
   - name: "Thesis LLM Policy Search"
-    runs_dir: "/Users/kantoz/Research/legps/thesis/runs"
-    adapter: "cma_jsonl" # Options: cma_jsonl, standard_json, tensorboard_csv, auto
-    baselines_file: "/Users/kantoz/Research/legps/thesis/data/baselines.csv"
+    runs_dir: "/Users/kantoz/Research/legps/thesis/runs_quentin"
+    adapter: "cma_jsonl"
+    backend: "jaxatari"
+    obs_type: "oc"
     performance_metric: "ret_mean"
     primary_graphs: ["ret_mean", "best_fitness", "min_y_best"]
+    color: "#818cf8"
 
   - name: "WandB BlendRL"
     runs_dir: "/Users/kantoz/Research/legps/wandb_downloads/blendrl"
     adapter: "wandb"
-    baselines_file: "/Users/kantoz/Research/legps/thesis/data/baselines.csv"
+    backend: "jaxatari"
+    obs_type: "pixels"
     performance_metric: "ret_mean"
     primary_graphs: ["ret_mean", "best_fitness"]
+    color: "#fb923c"
 
-  - name: "WandB PPO"
-    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads/ppo"
+  - name: "WandB PPO Pixel"
+    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads/ppo_pixel"
     adapter: "wandb"
-    baselines_file: "/Users/kantoz/Research/legps/thesis/data/baselines.csv"
+    backend: "jaxatari"
+    obs_type: "pixels"
     performance_metric: "charts/episodic_return"
     primary_graphs: ["charts/episodic_return", "charts/episodic_game_return", "losses/loss"]
+    color: "#34d399"
 
-  - name: "WandB DQN & Rainbow"
-    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads/dqn_rainbow"
+  - name: "WandB PPO OC"
+    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads/ppo_oc"
     adapter: "wandb"
-    baselines_file: "/Users/kantoz/Research/legps/thesis/data/baselines.csv"
+    backend: "jaxatari"
+    obs_type: "oc"
+    performance_metric: "charts/episodic_return"
+    primary_graphs: ["charts/episodic_return", "charts/episodic_game_return", "losses/loss"]
+    color: "#a78bfa"
+
+  - name: "WandB DQN Pixel"
+    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads/dqn_pixel"
+    adapter: "wandb"
+    backend: "jaxatari"
+    obs_type: "pixels"
     performance_metric: "charts/avg_episodic_return"
     primary_graphs: ["charts/avg_episodic_return", "losses/q_values"]
+    color: "#38bdf8"
 
-  # Example additional project configurations:
-  # - name: "JAXAtari DQN"
-  #   runs_dir: "/Users/kantoz/Research/jaxatari-dqn/runs"
-  #   adapter: "standard_json"
-  # - name: "CleanRL PPO"
-  #   runs_dir: "/Users/kantoz/Research/cleanrl/runs"
-  #   adapter: "auto"
+  - name: "WandB DQN OC"
+    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads/dqn_oc"
+    adapter: "wandb"
+    backend: "jaxatari"
+    obs_type: "oc"
+    performance_metric: "charts/avg_episodic_return"
+    primary_graphs: ["charts/avg_episodic_return", "losses/q_values"]
+    color: "#2dd4bf"
+
+  - name: "WandB Rainbow Pixel"
+    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads/rainbow_pixel"
+    adapter: "wandb"
+    backend: "jaxatari"
+    obs_type: "pixels"
+    performance_metric: "charts/avg_episodic_return"
+    primary_graphs: ["charts/avg_episodic_return", "losses/q_values"]
+    color: "#f472b6"
+
+  - name: "WandB Rainbow OC"
+    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads/rainbow_oc"
+    adapter: "wandb"
+    backend: "jaxatari"
+    obs_type: "oc"
+    performance_metric: "charts/avg_episodic_return"
+    primary_graphs: ["charts/avg_episodic_return", "losses/q_values"]
+    color: "#f472b6"
 
 server:
   host: "0.0.0.0"
