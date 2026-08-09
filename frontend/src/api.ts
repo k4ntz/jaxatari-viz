@@ -69,6 +69,8 @@ export interface EnvironmentInfo {
   mods_count: number;
   has_gif: boolean;
   gif_url: string | null;
+  summary?: string;
+  farama_url?: string;
 }
 
 export const fetchEnvironments = async (): Promise<EnvironmentInfo[]> => {
@@ -76,6 +78,11 @@ export const fetchEnvironments = async (): Promise<EnvironmentInfo[]> => {
     environmentsCache = axios.get(`${API_BASE}/environments`).then(res => res.data.environments);
   }
   return environmentsCache;
+};
+
+export const fetchEnvironmentById = async (envId: string): Promise<EnvironmentInfo> => {
+  const response = await axios.get(`${API_BASE}/environments/${encodeURIComponent(envId)}`);
+  return response.data;
 };
 
 export const fetchBaselines = async (): Promise<BaselineInfo[]> => {
