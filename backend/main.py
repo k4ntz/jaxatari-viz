@@ -305,6 +305,15 @@ if GAME_METADATA_FILE.exists():
 def get_game_metadata():
     return GAME_METADATA
 
+ENV_SUMMARIES_FILE = Path(__file__).parent / "env_summaries.json"
+ENV_SUMMARIES = {}
+if ENV_SUMMARIES_FILE.exists():
+    try:
+        with open(ENV_SUMMARIES_FILE, "r") as f:
+            ENV_SUMMARIES = json.load(f)
+    except Exception as e:
+        print("Failed to load env_summaries.json:", e)
+
 @app.get("/api/environments")
 def get_environments():
     jaxatari_dir = Path("/Users/kantoz/Research/JAXAtari")
@@ -349,6 +358,11 @@ def get_environments():
                             
                         has_gif = any(normalized_key in gif_key or gif_key in normalized_key for gif_key in available_gifs)
                         
+                        # Find Farama summary
+                        env_sum_data = ENV_SUMMARIES.get(game_name, {})
+                        summary_text = env_sum_data.get("summary", f"{game_name.replace('_', ' ').title()} is an Atari 2600 environment supported in JAXAtari.")
+                        farama_url = env_sum_data.get("farama_url", f"https://ale.farama.org/environments/{game_name}/")
+
                         # Store or update unique environment by ID (preferring entries with higher mod counts or GIF availability)
                         if game_name not in environments_dict or mods_count > environments_dict[game_name]["mods_count"]:
                             environments_dict[game_name] = {
@@ -358,7 +372,9 @@ def get_environments():
                                 "status": status,
                                 "mods_count": mods_count,
                                 "has_gif": has_gif,
-                                "gif_url": f"/api/environments/gif/{game_name}" if has_gif else None
+                                "gif_url": f"/api/environments/gif/{game_name}" if has_gif else None,
+                                "summary": summary_text,
+                                "farama_url": farama_url
                             }
         except Exception as e:
             print("Failed to parse games_covered.md:", e)
@@ -368,6 +384,28 @@ def get_environments():
     environments.sort(key=lambda x: x["name"])
 
     return {"environments": environments}
+
+@app.get("/api/environments/{env_id}")
+def get_environment_by_id(env_id: str):
+    all_envs = get_environments()["environments"]
+    normalized_target = env_id.replace("-", "_").lower()
+    for env in all_envs:
+        if env["id"].lower() == normalized_target or env["name"].lower() == normalized_target:
+            return env
+    
+    # Fallback if not directly found in games_covered.md
+    env_sum_data = ENV_SUMMARIES.get(normalized_target, {})
+    return {
+        "id": env_id,
+        "name": env_id.replace("_", " ").title(),
+        "category": "Atari",
+        "status": "🥇",
+        "mods_count": 0,
+        "has_gif": False,
+        "gif_url": None,
+        "summary": env_sum_data.get("summary", f"{env_id.replace('_', ' ').title()} is an Atari environment."),
+        "farama_url": env_sum_data.get("farama_url", f"https://ale.farama.org/environments/{env_id}/")
+    }
 
 @app.get("/api/environments/gif/{game_id}")
 def get_environment_gif(game_id: str):
