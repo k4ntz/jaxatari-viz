@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "mkdir -p public/game_verifs && cp -f /Users/kantoz/Research/JAXAtari/game_verifs/*.md public/game_verifs/ 2>/dev/null || true && tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"
   },

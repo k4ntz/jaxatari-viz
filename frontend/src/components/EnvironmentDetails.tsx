@@ -20,7 +20,8 @@ import {
   Square,
   BarChart2,
   Layers,
-  Award
+  Award,
+  ShieldCheck
 } from 'lucide-react';
 
 interface EnvironmentDetailsProps {
@@ -64,7 +65,8 @@ const getAlgorithmColor = (name: string): string => {
 
 export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
   selectedRuns,
-  setSelectedRuns
+  setSelectedRuns,
+  theme = 'dark'
 }) => {
   const { envId } = useParams<{ envId: string }>();
   const navigate = useNavigate();
@@ -431,6 +433,42 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
 
   const baseline = baselines[envInfo.id.toLowerCase()] || baselines[envInfo.name.toLowerCase()];
 
+  const isDark = theme === 'dark';
+  const gridColor = isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)';
+  const zeroLineColor = isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)';
+  const fontColor = isDark ? '#94a3b8' : '#475569';
+  const tickColor = isDark ? '#64748b' : '#475569';
+
+  // Shared layout configuration for theme-aware grid lines across all charts
+  const layoutBase = {
+    paper_bgcolor: 'transparent',
+    plot_bgcolor: 'transparent',
+    font: { color: fontColor, family: 'Inter, sans-serif', size: 11 },
+    xaxis: {
+      showgrid: true,
+      gridcolor: gridColor,
+      gridwidth: 1,
+      zeroline: true,
+      zerolinecolor: zeroLineColor,
+      tickfont: { color: tickColor }
+    },
+    yaxis: {
+      showgrid: true,
+      gridcolor: gridColor,
+      gridwidth: 1,
+      zeroline: true,
+      zerolinecolor: zeroLineColor,
+      tickfont: { color: tickColor }
+    },
+    legend: { orientation: 'h' as const, y: -0.15, font: { color: isDark ? '#cbd5e1' : '#334155', size: 10 } },
+    hovermode: 'closest' as const,
+    hoverlabel: {
+      bgcolor: isDark ? '#12141F' : '#ffffff',
+      bordercolor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.15)',
+      font: { family: 'Inter', color: isDark ? '#fff' : '#0f172a' }
+    }
+  };
+
   return (
     <div className="p-4 relative max-w-[1800px] mx-auto flex flex-col gap-6">
       {/* Header */}
@@ -519,29 +557,40 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
 
         {/* Right Column (9/12 cols = 75% width): Description + ONLY On JAXAtari Performance Bar Plot */}
         <div className="md:col-span-9 flex flex-col gap-4 h-full">
-          {/* Environment Description */}
+          {/* Environment Description Card */}
           <div className="bg-[#16192b] border border-[#2e334d] p-4 rounded-xl flex flex-col gap-2 shadow-lg shrink-0">
             <div className="flex items-center justify-between border-b border-[#2e334d] pb-2">
               <h2 className="text-xs font-bold uppercase tracking-wider text-indigo-400 flex items-center gap-1.5">
                 <Gamepad2 className="w-3.5 h-3.5" /> Environment Description
               </h2>
-              {envInfo.farama_url && (
-                <a
-                  href={envInfo.farama_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
+              <div className="flex items-center gap-2">
+                {/* Technical Verification Link Button next to Environment Description */}
+                <button
+                  onClick={() => navigate(`/environment/${envInfo.id}/verif`)}
                   className="inline-flex items-center gap-1 text-[11px] text-indigo-300 hover:text-indigo-200 bg-indigo-500/10 hover:bg-indigo-500/20 px-2.5 py-0.5 rounded-md border border-indigo-500/30 transition-all"
+                  title="View full ALE technical verification report"
                 >
-                  <ExternalLink className="w-3 h-3" /> Farama Docs
-                </a>
-              )}
+                  <ShieldCheck className="w-3 h-3" /> ALE Technical Verification
+                </button>
+
+                {envInfo.farama_url && (
+                  <a
+                    href={envInfo.farama_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] text-indigo-300 hover:text-indigo-200 bg-indigo-500/10 hover:bg-indigo-500/20 px-2.5 py-0.5 rounded-md border border-indigo-500/30 transition-all"
+                  >
+                    <ExternalLink className="w-3 h-3" /> Farama Docs
+                  </a>
+                )}
+              </div>
             </div>
             <p className="text-xs text-slate-300 leading-relaxed bg-[#0d0e17] border border-[#2e334d] p-3 rounded-lg shadow-inner">
               {envInfo.summary || `${envInfo.name} is an Atari 2600 game environment supported in JAXAtari.`}
             </p>
           </div>
 
-          {/* On JAXAtari Performance Distribution (Dynamically Fills Available Right Side Height) */}
+          {/* On JAXAtari Performance Distribution (Dynamically Fills Available Right Side Height with Grid Active) */}
           <div className="bg-[#16192b] border border-[#2e334d] p-4 rounded-xl flex flex-col gap-2 shadow-lg flex-1 min-h-[220px]">
             <div className="flex items-center justify-between border-b border-[#2e334d] pb-2 shrink-0">
               <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
@@ -553,14 +602,10 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
               <Plot
                 data={jaxatariBoxData as any}
                 layout={{
+                  ...layoutBase,
                   autosize: true,
-                  paper_bgcolor: 'transparent',
-                  plot_bgcolor: 'transparent',
                   margin: { t: 15, r: 20, l: 50, b: 40 },
-                  font: { color: '#94a3b8', family: 'Inter', size: 11 },
-                  yaxis: { title: 'Score / Return', gridcolor: 'rgba(255,255,255,0.05)' },
-                  legend: { orientation: 'h', y: -0.2, font: { size: 10 } },
-                  hovermode: 'closest'
+                  yaxis: { ...layoutBase.yaxis, title: 'Score / Return' }
                 }}
                 useResizeHandler={true}
                 style={{ width: '100%', height: '100%', minHeight: '180px' }}
@@ -571,7 +616,7 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
         </div>
       </div>
 
-      {/* Full-Width Section Below: All 3 Other Graphs Stacked Vertically & Taking Full Available Width */}
+      {/* Full-Width Section Below: All 3 Other Graphs Stacked Vertically with Doubled Vertical Height (700px) & Active Grid Lines */}
       <div className="flex flex-col gap-6">
         {/* Graph 1: JAXAtari vs ALE Performance Distribution */}
         <div className="bg-[#16192b] border border-[#2e334d] p-5 rounded-xl flex flex-col gap-3 shadow-lg">
@@ -581,18 +626,15 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
             </h2>
             <span className="text-[11px] text-slate-400">{vsAleBoxData.length} Series</span>
           </div>
-          <div className="w-full h-[400px]">
+          <div className="w-full h-[700px]">
             <Plot
               data={vsAleBoxData as any}
               layout={{
-                height: 380,
-                paper_bgcolor: 'transparent',
-                plot_bgcolor: 'transparent',
-                margin: { t: 15, r: 20, l: 50, b: 40 },
-                font: { color: '#94a3b8', family: 'Inter', size: 11 },
-                yaxis: { title: 'Score / Return', gridcolor: 'rgba(255,255,255,0.05)' },
-                legend: { orientation: 'h', y: -0.2, font: { size: 10 } },
-                hovermode: 'closest'
+                ...layoutBase,
+                height: 680,
+                margin: { t: 20, r: 20, l: 55, b: 50 },
+                font: { ...layoutBase.font, size: 12 },
+                yaxis: { ...layoutBase.yaxis, title: 'Score / Return' }
               }}
               useResizeHandler={true}
               style={{ width: '100%', height: '100%' }}
@@ -609,19 +651,16 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
             </h2>
             <span className="text-[11px] text-slate-400">{jaxatariAggLineData.length} Methods</span>
           </div>
-          <div className="w-full h-[400px]">
+          <div className="w-full h-[700px]">
             <Plot
               data={jaxatariAggLineData as any}
               layout={{
-                height: 380,
-                paper_bgcolor: 'transparent',
-                plot_bgcolor: 'transparent',
-                margin: { t: 15, r: 20, l: 50, b: 40 },
-                font: { color: '#94a3b8', family: 'Inter', size: 11 },
-                xaxis: { title: 'Generations / Steps', gridcolor: 'rgba(255,255,255,0.05)' },
-                yaxis: { title: 'Mean Return / Fitness', gridcolor: 'rgba(255,255,255,0.05)' },
-                legend: { orientation: 'h', y: -0.2, font: { size: 10 } },
-                hovermode: 'closest'
+                ...layoutBase,
+                height: 680,
+                margin: { t: 20, r: 20, l: 55, b: 50 },
+                font: { ...layoutBase.font, size: 12 },
+                xaxis: { ...layoutBase.xaxis, title: 'Generations / Steps' },
+                yaxis: { ...layoutBase.yaxis, title: 'Mean Return / Fitness' }
               }}
               useResizeHandler={true}
               style={{ width: '100%', height: '100%' }}
@@ -638,19 +677,16 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
             </h2>
             <span className="text-[11px] text-slate-400">{vsAleAggLineData.length} Series</span>
           </div>
-          <div className="w-full h-[400px]">
+          <div className="w-full h-[700px]">
             <Plot
               data={vsAleAggLineData as any}
               layout={{
-                height: 380,
-                paper_bgcolor: 'transparent',
-                plot_bgcolor: 'transparent',
-                margin: { t: 15, r: 20, l: 50, b: 40 },
-                font: { color: '#94a3b8', family: 'Inter', size: 11 },
-                xaxis: { title: 'Generations / Steps', gridcolor: 'rgba(255,255,255,0.05)' },
-                yaxis: { title: 'Mean Return / Fitness', gridcolor: 'rgba(255,255,255,0.05)' },
-                legend: { orientation: 'h', y: -0.2, font: { size: 10 } },
-                hovermode: 'closest'
+                ...layoutBase,
+                height: 680,
+                margin: { t: 20, r: 20, l: 55, b: 50 },
+                font: { ...layoutBase.font, size: 12 },
+                xaxis: { ...layoutBase.xaxis, title: 'Generations / Steps' },
+                yaxis: { ...layoutBase.yaxis, title: 'Mean Return / Fitness' }
               }}
               useResizeHandler={true}
               style={{ width: '100%', height: '100%' }}

@@ -6,6 +6,7 @@ import RunDetails from './components/RunDetails';
 import LogsExplorer from './components/LogsExplorer';
 import EnvironmentsView from './components/EnvironmentsView';
 import EnvironmentDetails from './components/EnvironmentDetails';
+import GameVerificationView from './components/GameVerificationView';
 
 function App() {
   const [selectedRuns, setSelectedRuns] = React.useState<string[]>(() => {
@@ -80,6 +81,7 @@ function App() {
                 />
               }
             />
+            <Route path="/environment/:envId/verif" element={<GameVerificationView theme={theme} />} />
             <Route path="/run/:runId" element={<RunDetails />} />
             <Route
               path="/logs"

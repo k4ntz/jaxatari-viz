@@ -296,6 +296,7 @@ input[type="text"]:focus {
 .h-96 { height: 24rem; }
 .h-\[360px\] { height: 360px; }
 .h-\[400px\] { height: 400px; }
+.h-\[700px\] { height: 700px; }
 .max-w-xs { max-width: 20rem; }
 .max-w-sm { max-width: 24rem; }
 .max-w-md { max-width: 28rem; }
