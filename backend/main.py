@@ -49,27 +49,19 @@ def get_app_config():
     return APP_CONFIG
 
 def scan_run_folders(runs_dir: Path) -> List[tuple[Path, str]]:
-    """Yield (run_path, relative_run_folder) for direct or nested run directories."""
+    """Yield (run_path, relative_run_folder) for direct or arbitrarily nested run directories."""
     found = []
     if not runs_dir.exists():
         return found
 
-    for entry in os.scandir(runs_dir):
-        if entry.is_dir():
-            p = Path(entry.path)
-            # Check if this directory itself is a run folder
-            if (p / "meta.json").exists() or (p / "config.json").exists() or (p / "results.json").exists() or (p / "history.csv").exists() or (p / "best.json").exists():
-                found.append((p, p.name))
-            else:
-                # Check 1 level deeper for nested project folders (e.g. blendrl/, ppo/)
-                try:
-                    for sub_entry in os.scandir(p):
-                        if sub_entry.is_dir():
-                            sp = Path(sub_entry.path)
-                            if (sp / "meta.json").exists() or (sp / "config.json").exists() or (sp / "results.json").exists() or (sp / "history.csv").exists() or (sp / "best.json").exists():
-                                found.append((sp, f"{p.name}/{sp.name}"))
-                except Exception:
-                    pass
+    for root, dirs, files in os.walk(runs_dir):
+        # If this directory contains run markers, treat as a run folder and don't recurse into subdirectories
+        if any(marker in files for marker in ("meta.json", "config.json", "results.json", "history.csv", "best.json")):
+            p = Path(root)
+            rel = p.relative_to(runs_dir).as_posix()
+            found.append((p, rel))
+            dirs.clear()
+
     return found
 
 _RUNS_CACHE = {"timestamp": 0, "data": []}

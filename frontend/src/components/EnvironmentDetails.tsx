@@ -244,32 +244,8 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
       boxpoints: 'outliers'
     }));
 
-    if (envInfo) {
-      const b = baselines[envInfo.id.toLowerCase()] || baselines[envInfo.name.toLowerCase()];
-      if (b) {
-        if (b.ppo) {
-          traces.push({
-            y: [b.ppo],
-            type: 'box',
-            name: 'PPO Baseline',
-            marker: { color: getAlgorithmColor('PPO Baseline') },
-            boxpoints: false
-          });
-        }
-        if (b.dqn) {
-          traces.push({
-            y: [b.dqn],
-            type: 'box',
-            name: 'DQN Baseline',
-            marker: { color: getAlgorithmColor('DQN Baseline') },
-            boxpoints: false
-          });
-        }
-      }
-    }
-
     return traces;
-  }, [sortedRuns, envInfo, baselines]);
+  }, [sortedRuns, envInfo]);
 
   // Score Evolution Line Plot (Aggregated across seeds) for On JAXAtari
   const jaxatariAggLineData = useMemo(() => {
@@ -377,35 +353,8 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
       });
     });
 
-    // Reference lines for ALE
-    if (envInfo) {
-      const b = baselines[envInfo.id.toLowerCase()] || baselines[envInfo.name.toLowerCase()];
-      if (b) {
-        if (b.ppo) {
-          traces.push({
-            x: [0, maxX || 100],
-            y: [b.ppo, b.ppo],
-            type: 'scatter',
-            mode: 'lines',
-            name: `ALE PPO Baseline (${b.ppo})`,
-            line: { color: getAlgorithmColor('PPO Baseline'), width: 2, dash: 'dash' }
-          });
-        }
-        if (b.dqn) {
-          traces.push({
-            x: [0, maxX || 100],
-            y: [b.dqn, b.dqn],
-            type: 'scatter',
-            mode: 'lines',
-            name: `ALE DQN Baseline (${b.dqn})`,
-            line: { color: getAlgorithmColor('DQN Baseline'), width: 2, dash: 'dash' }
-          });
-        }
-      }
-    }
-
     return traces;
-  }, [sortedRuns, metricsMap, envInfo, baselines]);
+  }, [sortedRuns, metricsMap, envInfo]);
 
   if (loading) {
     return (

@@ -1,5 +1,5 @@
 # JAXAtari-Viz Configuration File
-# Configure multi-project run directories and adapter parsing settings.
+# Unified run directories and scientific evaluation settings
 
 ale_baselines_file: "/Users/kantoz/Research/legps/thesis/data/baselines.csv"
 
@@ -7,13 +7,30 @@ ale_baselines_file: "/Users/kantoz/Research/legps/thesis/data/baselines.csv"
 algorithm_colors:
   legps: "#818cf8"         # Indigo
   ppo: "#34d399"           # Emerald
+  ppo (pixels): "#34d399"  # Emerald
+  ppo (oc): "#a78bfa"      # Purple
   ppo baseline: "#8b5cf6"  # Violet
   dqn: "#38bdf8"           # Sky Blue
+  dqn (pixels): "#38bdf8"  # Sky Blue
+  dqn (oc): "#2dd4bf"      # Teal
   dqn baseline: "#ec4899"  # Pink
+  pqn: "#f59e0b"           # Amber
+  pqn (pixels): "#f59e0b"  # Amber
+  pqn (oc): "#fbbf24"      # Yellow Amber
   rainbow: "#f472b6"       # Pink Accent
+  rainbow (pixels): "#f472b6"
+  rainbow (oc): "#fb7185"  # Rose
   cma-es: "#fbbf24"        # Amber
   cmaes: "#fbbf24"
   blendrl: "#fb923c"       # Orange
+
+# Default environment count configurations per algorithm
+algorithm_default_envs:
+  DQN: 1
+  Rainbow: 1
+  PPO: 8
+  PQN: 128
+  BlendRL: 64
 
 projects:
   - name: "Thesis LLM Policy Search"
@@ -25,68 +42,14 @@ projects:
     primary_graphs: ["ret_mean", "best_fitness", "min_y_best"]
     color: "#818cf8"
 
-  - name: "WandB BlendRL"
-    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads/blendrl"
-    adapter: "wandb"
-    backend: "jaxatari"
-    obs_type: "pixels"
-    performance_metric: "ret_mean"
-    primary_graphs: ["ret_mean", "best_fitness"]
-    color: "#fb923c"
-
-  - name: "WandB PPO Pixel"
-    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads/ppo_pixel"
+  - name: "WandB Downloads"
+    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads"
     adapter: "wandb"
     backend: "jaxatari"
     obs_type: "pixels"
     performance_metric: "charts/episodic_return"
-    primary_graphs: ["charts/episodic_return", "charts/episodic_game_return", "losses/loss"]
+    primary_graphs: ["charts/episodic_return", "charts/avg_episodic_return", "losses/loss", "losses/q_values"]
     color: "#34d399"
-
-  - name: "WandB PPO OC"
-    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads/ppo_oc"
-    adapter: "wandb"
-    backend: "jaxatari"
-    obs_type: "oc"
-    performance_metric: "charts/episodic_return"
-    primary_graphs: ["charts/episodic_return", "charts/episodic_game_return", "losses/loss"]
-    color: "#a78bfa"
-
-  - name: "WandB DQN Pixel"
-    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads/dqn_pixel"
-    adapter: "wandb"
-    backend: "jaxatari"
-    obs_type: "pixels"
-    performance_metric: "charts/avg_episodic_return"
-    primary_graphs: ["charts/avg_episodic_return", "losses/q_values"]
-    color: "#38bdf8"
-
-  - name: "WandB DQN OC"
-    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads/dqn_oc"
-    adapter: "wandb"
-    backend: "jaxatari"
-    obs_type: "oc"
-    performance_metric: "charts/avg_episodic_return"
-    primary_graphs: ["charts/avg_episodic_return", "losses/q_values"]
-    color: "#2dd4bf"
-
-  - name: "WandB Rainbow Pixel"
-    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads/rainbow_pixel"
-    adapter: "wandb"
-    backend: "jaxatari"
-    obs_type: "pixels"
-    performance_metric: "charts/avg_episodic_return"
-    primary_graphs: ["charts/avg_episodic_return", "losses/q_values"]
-    color: "#f472b6"
-
-  - name: "WandB Rainbow OC"
-    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads/rainbow_oc"
-    adapter: "wandb"
-    backend: "jaxatari"
-    obs_type: "oc"
-    performance_metric: "charts/avg_episodic_return"
-    primary_graphs: ["charts/avg_episodic_return", "losses/q_values"]
-    color: "#f472b6"
 
 server:
   host: "0.0.0.0"

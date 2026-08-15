@@ -130,50 +130,72 @@ class WandbAdapter(RunAdapter):
                 cfg_lower = {str(k).lower(): v for k, v in cfg.items()} if isinstance(cfg, dict) else {}
 
                 # Extract representation variant: OC vs Pixels
-                is_oc = "oc" in run_path.name.lower() or "oc" in meta.get("name", "").lower() or cfg_lower.get("pixel_based") is False
-                is_pixel = "pixel" in run_path.name.lower() or "pixel" in meta.get("name", "").lower() or cfg_lower.get("pixel_based") is True
+                is_oc = "oc" in run_path.name.lower() or "_oc" in str(run_path).lower() or cfg_lower.get("object_centric") is True or cfg_lower.get("pixel_based") is False
+                is_pixel = not is_oc
 
-                # Automatically detect game
-                if "game" not in cfg or cfg["game"] == "unknown_game":
-                    game_val = cfg_lower.get("env_id") or cfg_lower.get("env_name") or cfg_lower.get("game") or cfg_lower.get("env") or meta.get("name", "unknown_game")
-                    if isinstance(game_val, str) and "_" in game_val and not any(k in game_val.lower() for k in ("kangaroo", "seaquest", "skiing", "montezuma", "space_invaders", "spaceinvaders", "asteroids", "bankheist")):
-                        possible_game = game_val.split("_")[0]
-                        cfg["game"] = possible_game if possible_game.lower() not in ("ppo", "cma", "dqn", "rainbow") else game_val
-                    else:
-                        cfg["game"] = game_val
+                # Extract num_envs
+                num_envs = cfg_lower.get("num_envs")
+                if num_envs is None:
+                    pstr = str(run_path)
+                    for cand in [8192, 2048, 128, 64, 32, 8, 1]:
+                        if f"_{cand}_" in pstr or f"/{cand}_" in pstr or f"/{cand}/" in pstr:
+                            num_envs = cand
+                            break
+                if num_envs is None:
+                    num_envs = 32
+                cfg["num_envs"] = int(num_envs)
 
-                # Determine base method & append representation tag e.g. PPO (pixels), PPO (OC), DQN (pixels), DQN (OC)
-                exp_name = str(cfg_lower.get("exp_name") or cfg_lower.get("method") or cfg_lower.get("algorithm") or cfg_lower.get("alg") or "").lower()
-                algo = str(cfg_lower.get("algorithm") or cfg_lower.get("alg") or "").lower()
+                # Extract backend
+                if "ale" in str(run_path).lower().split("/"):
+                    cfg["backend"] = "ale"
+                elif "jaxatari" in str(run_path).lower().split("/"):
+                    cfg["backend"] = "jaxatari"
+                else:
+                    cfg["backend"] = cfg_lower.get("backend", "jaxatari")
+
+                # Automatically detect and normalize game
+                game_raw = cfg_lower.get("env_name") or cfg_lower.get("env_id") or cfg_lower.get("game") or cfg_lower.get("env") or meta.get("name", "unknown_game")
+                if isinstance(game_raw, str):
+                    # Clean up common suffixes / prefixes
+                    g_clean = game_raw.replace("-v5", "").replace("_v5", "").lower()
+                    if "_" in g_clean and not any(k in g_clean for k in ("kangaroo", "seaquest", "skiing", "montezuma", "montezumarevenge", "space_invaders", "spaceinvaders", "asteroids", "bankheist", "bank_heist", "chopper_command", "choppercommand", "ice_hockey", "icehockey", "kung_fu_master", "kungfumaster", "robotank", "robo_tank", "fishing_derby", "fishingderby", "river_raid", "riverraid", "time_pilot", "timepilot", "word_zapper", "wordzapper", "sir_lancelot", "sirlancelot", "flag_capture", "flagcapture", "king_kong", "kingkong", "donkey_kong", "donkeykong")):
+                        possible_game = g_clean.split("_")[0]
+                        if possible_game not in ("ppo", "cma", "dqn", "rainbow", "pqn", "blendrl", "mlp"):
+                            g_clean = possible_game
+                    cfg["game"] = g_clean
+                else:
+                    cfg["game"] = "unknown_game"
+
+                # Determine base method & clean representation tag
+                exp_name = str(cfg_lower.get("exp_name") or cfg_lower.get("method") or cfg_lower.get("algorithm") or cfg_lower.get("alg_name") or cfg_lower.get("alg") or "").lower()
+                algo = str(cfg_lower.get("algorithm") or cfg_lower.get("alg") or cfg_lower.get("alg_name") or "").lower()
                 proj_name = str(cfg_lower.get("wandb_project_name") or cfg_lower.get("project") or "").lower()
                 run_name = meta.get("name", run_path.name).lower()
                 
                 base_method = "Unknown"
-                if algo == "blender" or "blender" in cfg_lower or "blend" in proj_name or "blend" in run_name:
+                if "pqn" in exp_name or "pqn" in algo or "pqn" in run_name or "/pqn/" in str(run_path).lower():
+                    base_method = "PQN"
+                elif algo == "blender" or "blender" in cfg_lower or "blend" in proj_name or "blend" in run_name or "blendrl" in str(run_path).lower():
                     base_method = "BlendRL"
-                elif "rainbow" in exp_name or "rainbow" in algo or "rainbow" in run_name:
+                elif "rainbow" in exp_name or "rainbow" in algo or "rainbow" in run_name or "/rainbow/" in str(run_path).lower():
                     base_method = "Rainbow"
-                elif "dqn" in exp_name or "dqn" in algo or "dqn" in run_name:
+                elif "dqn" in exp_name or "dqn" in algo or "dqn" in run_name or "/dqn/" in str(run_path).lower():
                     base_method = "DQN"
-                elif "ppo" in exp_name or "ppo" in algo or "ppo" in run_name:
+                elif "ppo" in exp_name or "ppo" in algo or "ppo" in run_name or "/ppo/" in str(run_path).lower():
                     base_method = "PPO"
                 elif algo:
-                    base_method = algo.title()
+                    base_method = algo.upper() if len(algo) <= 4 else algo.title()
                 elif exp_name:
-                    base_method = exp_name.upper() if exp_name in ("ppo", "dqn", "cma", "rainbow") else exp_name.title()
+                    base_method = exp_name.upper() if len(exp_name) <= 4 else exp_name.title()
                 else:
-                    base_method = "PPO" if "ppo" in run_name else "BlendRL"
+                    base_method = "PPO"
 
-                if is_oc and not base_method.endswith("(OC)"):
-                    cfg["method"] = f"{base_method} (OC)"
-                elif is_pixel and not base_method.endswith("(pixels)"):
-                    cfg["method"] = f"{base_method} (pixels)"
-                else:
-                    cfg["method"] = base_method
+                cfg["raw_alg"] = base_method
+                rep_suffix = "(OC)" if is_oc else "(pixels)"
+                cfg["method"] = f"{base_method} {rep_suffix}"
 
                 if "model" not in cfg or cfg["model"] in ("wandb_run", "unknown_model"):
                     val_model = cfg_lower.get("valuation_model")
-                    exp_name = str(cfg_lower.get("exp_name") or "")
                     if isinstance(val_model, dict) and val_model.get("type") == "mlp":
                         cfg["model"] = "MLP"
                     elif is_oc:
@@ -183,7 +205,7 @@ class WandbAdapter(RunAdapter):
                     elif exp_name.startswith("mlp"):
                         cfg["model"] = "MLP"
                     else:
-                        cfg["model"] = exp_name or "Unknown"
+                        cfg["model"] = base_method
                 
                 # Date extraction from timestamp
                 summary = meta.get("summary", {})

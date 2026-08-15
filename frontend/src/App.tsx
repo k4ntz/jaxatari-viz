@@ -60,6 +60,28 @@ function App() {
               }
             />
             <Route
+              path="/compare_env_scaling"
+              element={
+                <ComparisonView
+                  activeTab="env_scaling"
+                  selectedRuns={selectedRuns}
+                  setSelectedRuns={setSelectedRuns}
+                  theme={theme}
+                />
+              }
+            />
+            <Route
+              path="/compare_algorithms"
+              element={
+                <ComparisonView
+                  activeTab="alg_comparison"
+                  selectedRuns={selectedRuns}
+                  setSelectedRuns={setSelectedRuns}
+                  theme={theme}
+                />
+              }
+            />
+            <Route
               path="/compare_ale_jaxatari"
               element={
                 <ComparisonView

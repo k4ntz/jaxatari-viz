@@ -8,7 +8,7 @@ interface ComparisonProps {
   selectedRuns: string[];
   setSelectedRuns?: React.Dispatch<React.SetStateAction<string[]>>;
   theme?: string;
-  activeTab?: 'jaxatari' | 'vs_ale';
+  activeTab?: 'jaxatari' | 'vs_ale' | 'env_scaling' | 'alg_comparison';
 }
 
 const filterOutliersIQR = (data: number[]) => {
@@ -69,12 +69,73 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
       setSelectedModels(new Set(data.map(r => String(r.config.model || 'unknown'))));
       setSelectedMethods(new Set(data.map(r => String(r.config.method || 'unknown'))));
       setSelectedGames(new Set(data.map(r => String(r.config.game || 'unknown')).filter(g => g !== 'montezuma')));
+      // Default preset based on active scientific question tab
+      if (compareTab === 'env_scaling') {
+        setGroupBy('num_envs');
+      } else if (compareTab === 'alg_comparison') {
+        setGroupBy('method');
+      }
     });
-  }, []);
+  }, [compareTab]);
 
-  const models = React.useMemo(() => Array.from(new Set(allRuns.map(r => String(r.config.model || 'unknown')))).sort((a, b) => a.localeCompare(b)), [allRuns]);
-  const methods = React.useMemo(() => Array.from(new Set(allRuns.map(r => String(r.config.method || 'unknown')))).sort((a, b) => a.localeCompare(b)), [allRuns]);
-  const games = React.useMemo(() => Array.from(new Set(allRuns.map(r => String(r.config.game || 'unknown')))).sort((a, b) => a.localeCompare(b)), [allRuns]);
+  // Determine eligible runs for the current tab
+  const eligibleRuns = React.useMemo(() => {
+    if (compareTab === 'jaxatari') {
+      return allRuns.filter(r => (r.config?.backend || r.backend || 'jaxatari').toLowerCase() === 'jaxatari');
+    }
+    
+    if (compareTab === 'alg_comparison') {
+      return allRuns.filter(r => {
+        const cfg = r.config || {};
+        const backend = (cfg.backend || r.backend || 'jaxatari').toLowerCase();
+        const numEnvs = Number(cfg.num_envs || 32);
+        const rawMethod = String(cfg.raw_alg || cfg.method || '').toLowerCase();
+        if (backend !== 'jaxatari') return false;
+        if (rawMethod.includes('dqn') && numEnvs !== 1) return false;
+        if (rawMethod.includes('rainbow') && numEnvs !== 1) return false;
+        if (rawMethod.includes('ppo') && numEnvs !== 8) return false;
+        if (rawMethod.includes('pqn') && numEnvs !== 128) return false;
+        return true;
+      });
+    }
+
+    if (compareTab === 'vs_ale') {
+      // Find intersection of (raw_alg, num_envs, obs_type) available on BOTH ale and jaxatari
+      const aleKeys = new Set<string>();
+      const jaxKeys = new Set<string>();
+
+      allRuns.forEach(r => {
+        const cfg = r.config || {};
+        const backend = (cfg.backend || r.backend || 'jaxatari').toLowerCase();
+        const numEnvs = Number(cfg.num_envs || 32);
+        const rawAlg = String(cfg.raw_alg || cfg.method || '').toUpperCase().trim();
+        const obs = (r.obs_type || (String(cfg.method || '').toLowerCase().includes('oc') ? 'oc' : 'pixels')).toLowerCase();
+        const key = `${rawAlg}__${numEnvs}__${obs}`;
+        if (backend === 'ale') {
+          aleKeys.add(key);
+        } else {
+          jaxKeys.add(key);
+        }
+      });
+
+      const sharedKeys = new Set([...aleKeys].filter(k => jaxKeys.has(k)));
+
+      return allRuns.filter(r => {
+        const cfg = r.config || {};
+        const numEnvs = Number(cfg.num_envs || 32);
+        const rawAlg = String(cfg.raw_alg || cfg.method || '').toUpperCase().trim();
+        const obs = (r.obs_type || (String(cfg.method || '').toLowerCase().includes('oc') ? 'oc' : 'pixels')).toLowerCase();
+        const key = `${rawAlg}__${numEnvs}__${obs}`;
+        return sharedKeys.has(key);
+      });
+    }
+
+    return allRuns;
+  }, [allRuns, compareTab]);
+
+  const models = React.useMemo(() => Array.from(new Set(eligibleRuns.map(r => String(r.config.model || 'unknown')))).sort((a, b) => a.localeCompare(b)), [eligibleRuns]);
+  const methods = React.useMemo(() => Array.from(new Set(eligibleRuns.map(r => String(r.config.method || 'unknown')))).sort((a, b) => a.localeCompare(b)), [eligibleRuns]);
+  const games = React.useMemo(() => Array.from(new Set(eligibleRuns.map(r => String(r.config.game || 'unknown')))).sort((a, b) => a.localeCompare(b)), [eligibleRuns]);
 
   const getGameMetaInfo = React.useCallback((g: string) => {
     const norm = g.toLowerCase().replace(/_/g, '');
@@ -92,15 +153,15 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
   }, [games, getGameMetaInfo]);
 
   useEffect(() => {
-    if (!setSelectedRuns || allRuns.length === 0) return;
-    const matching = allRuns.filter(run => {
+    if (!setSelectedRuns || eligibleRuns.length === 0) return;
+    const matching = eligibleRuns.filter(run => {
       const modelMatch = selectedModels.has(String(run.config.model || 'unknown'));
       const methodMatch = selectedMethods.size === 0 || selectedMethods.has(String(run.config.method || 'unknown'));
       const gameMatch = selectedGames.has(String(run.config.game || 'unknown'));
       return modelMatch && methodMatch && gameMatch;
     }).map(r => r.id);
     setSelectedRuns(matching);
-  }, [selectedModels, selectedMethods, selectedGames, allRuns]);
+  }, [selectedModels, selectedMethods, selectedGames, eligibleRuns]);
 
   const handleFilterClick = (
     e: React.MouseEvent,
@@ -190,7 +251,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
 
   const availableAlgorithms = React.useMemo(() => {
     const algos = new Set<string>();
-    allRuns.forEach(r => {
+    eligibleRuns.forEach(r => {
       const m = r.config?.method || r.config?.algorithm;
       if (m) {
         const clean = String(m).replace(/\s*\((pixels|oc)\)\s*/gi, '').trim();
@@ -198,7 +259,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
       }
     });
     return Array.from(algos).sort((a, b) => a.localeCompare(b));
-  }, [allRuns]);
+  }, [eligibleRuns]);
 
   const sortedGameEntries = React.useMemo(() => {
     const entries = Object.entries(runsByGame);
@@ -231,6 +292,8 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
 
   const availableGroupKeys = [
     'method',
+    'num_envs',
+    'backend',
     'model',
     'seed',
     'noise (all)',
@@ -274,12 +337,24 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
   ];
 
   const FIXED_ALGO_COLORS: Record<string, string> = {
-    'legps': '#818cf8',        // Indigo for LeGPS
-    'ppo': '#34d399',          // Emerald for PPO
-    'ppo baseline': '#8b5cf6', // Violet for PPO Baseline
-    'dqn': '#38bdf8',          // Sky Blue for DQN
-    'dqn baseline': '#ec4899', // Pink for DQN Baseline
-    'cma-es': '#fbbf24',       // Amber for CMA-ES
+    'legps': '#818cf8',               // Indigo for LeGPS
+    'ppo': '#34d399',                 // Emerald for PPO
+    'jaxatari: ppo (pixels)': '#34d399', // Emerald
+    'ale: ppo (pixels)': '#60a5fa',      // Bright Sky Blue
+    'jaxatari: ppo (oc)': '#a78bfa',     // Purple
+    'ale: ppo (oc)': '#f472b6',          // Pink
+    'jaxatari: pqn (pixels)': '#f59e0b', // Amber
+    'ale: pqn (pixels)': '#38bdf8',      // Sky
+    'jaxatari: pqn (oc)': '#fbbf24',     // Yellow Amber
+    'ale: pqn (oc)': '#e879f9',          // Fuchsia
+    'jaxatari: dqn (pixels)': '#2dd4bf', // Teal
+    'ale: dqn (pixels)': '#818cf8',      // Indigo
+    'jaxatari: rainbow (pixels)': '#fb7185', // Rose
+    'ale: rainbow (pixels)': '#c084fc',      // Violet
+    'ppo baseline': '#8b5cf6',
+    'dqn': '#38bdf8',
+    'dqn baseline': '#ec4899',
+    'cma-es': '#fbbf24',
     'cmaes': '#fbbf24',
   };
 
@@ -294,7 +369,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
     }
     const merged = { ...configColors, ...FIXED_ALGO_COLORS };
     for (const [key, color] of Object.entries(merged)) {
-      if (cleanName.startsWith(key)) {
+      if (cleanName === key || cleanName.startsWith(key)) {
         return color;
       }
     }
@@ -307,7 +382,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
     return COLOR_PALETTE[index];
   };
 
-  const generatePlotData = (gameRuns: string[], game: string, metricKey: string, mode: 'lines' | 'lines+markers' = 'lines+markers') => {
+  const generatePlotData = (gameRuns: string[], _game: string, metricKey: string, mode: 'lines' | 'lines+markers' = 'lines+markers') => {
     let maxX = 0;
     const traces: any[] = gameRuns.map((runId) => {
       const runData = metricsData[runId] || [];
@@ -343,17 +418,6 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
       };
     });
 
-    if (metricKey === 'ret_mean' && compareTab === 'vs_ale') {
-       let bGame = game;
-       if (bGame === 'montezuma') bGame = 'montezuma_revenge';
-       const b = baselinesMap[bGame];
-       if (b) {
-         const baselineX = [0, maxX || 100];
-         traces.push({ x: baselineX, y: [b.ppo, b.ppo], type: 'scatter', mode: 'lines', name: 'PPO Baseline', line: { color: getAlgorithmColor('PPO Baseline'), width: 2, dash: 'dash' }, marker: {size: 0} });
-         traces.push({ x: baselineX, y: [b.dqn, b.dqn], type: 'scatter', mode: 'lines', name: 'DQN Baseline', line: { color: getAlgorithmColor('DQN Baseline'), width: 2, dash: 'dash' }, marker: {size: 0} });
-       }
-    }
-
     return traces;
   };
 
@@ -380,7 +444,10 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
       const method = cfg.method || (cfg.algorithm ? String(cfg.algorithm).toUpperCase() : 'LeGPS');
       
       let rawGroupName = method;
-      if (groupBy === 'noise (all)') {
+      if (compareTab === 'vs_ale') {
+        const backendName = (cfg.backend || 'jaxatari').toLowerCase() === 'ale' ? 'ALE' : 'JAXAtari';
+        rawGroupName = `${backendName}: ${method}`;
+      } else if (groupBy === 'noise (all)') {
         const hpTag = getNoiseHpTag(cfg);
         rawGroupName = hpTag ? `${method} (${hpTag})` : method;
       } else if (groupBy === 'sigma0') {
@@ -433,16 +500,6 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
       return trace;
     });
 
-    if (compareTab === 'vs_ale') {
-      let bGame = game;
-      if (bGame === 'montezuma') bGame = 'montezuma_revenge';
-      const b = baselinesMap[bGame];
-      if (b) {
-        result.push({ y: [getHNS(game, b.ppo)], type: 'box', name: 'PPO Baseline', marker: { color: getAlgorithmColor('PPO Baseline') }, boxpoints: false } as any);
-        result.push({ y: [getHNS(game, b.dqn)], type: 'box', name: 'DQN Baseline', marker: { color: getAlgorithmColor('DQN Baseline') }, boxpoints: false } as any);
-      }
-    }
-
     return result;
   };
 
@@ -463,7 +520,10 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
         const method = cfg.method || (cfg.algorithm ? String(cfg.algorithm).toUpperCase() : 'LeGPS');
         
         let rawGroupName = method;
-        if (groupBy === 'noise (all)') {
+        if (compareTab === 'vs_ale') {
+          const backendName = (cfg.backend || 'jaxatari').toLowerCase() === 'ale' ? 'ALE' : 'JAXAtari';
+          rawGroupName = `${backendName}: ${method}`;
+        } else if (groupBy === 'noise (all)') {
           const hpTag = getNoiseHpTag(cfg);
           rawGroupName = hpTag ? `${method} (${hpTag})` : method;
         } else if (groupBy === 'sigma0') {
@@ -526,12 +586,6 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
         marker: { color: getAlgorithmColor(groupName) }
       });
     });
-    
-    // Baselines only make sense in 'vs_ale' mode for Pixel-based RL
-    if (compareTab === 'vs_ale' && (!obsTypeFilter || obsTypeFilter === 'pixels')) {
-      traces.push({ y: ppoPoints, type: 'box', name: 'PPO Baseline', marker: { color: getAlgorithmColor('PPO Baseline') } });
-      traces.push({ y: dqnPoints, type: 'box', name: 'DQN Baseline', marker: { color: getAlgorithmColor('DQN Baseline') } });
-    }
 
     if (applyFilter) {
       traces.forEach(trace => {
@@ -578,13 +632,43 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
     }
   };
 
+  const pageTitles: Record<string, { title: string; subtitle: string; tag: string }> = {
+    'jaxatari': {
+      title: 'JAXAtari Exploration & Evaluation',
+      subtitle: 'Comprehensive benchmarks and runs executed natively on JAXAtari.',
+      tag: 'JAXAtari Benchmarks'
+    },
+    'env_scaling': {
+      title: 'Impact of Parallel Environments',
+      subtitle: 'What is the impact of the number of parallel environments (1 to 8192) on reinforcement learning performance?',
+      tag: 'Scientific Question 1'
+    },
+    'alg_comparison': {
+      title: 'Algorithm Comparison (Default Env Setup)',
+      subtitle: 'Head-to-head comparison under standard canonical environment configurations (DQN: 1, Rainbow: 1, PPO: 8, PQN: 128).',
+      tag: 'Scientific Question 2'
+    },
+    'vs_ale': {
+      title: 'Framework Benchmark: JAXAtari vs ALE',
+      subtitle: 'Direct side-by-side comparison between JAXAtari and Arcade Learning Environment (ALE) across equivalent parallel environment counts.',
+      tag: 'Scientific Question 3'
+    }
+  };
+
+  const currentTabInfo = pageTitles[compareTab] || pageTitles['jaxatari'];
+
   return (
     <div className="p-8 relative">
       <div className="flex items-center justify-between mb-8 pb-6 border-b border-[#2e334d]">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-2 tracking-tight">Run Comparison</h1>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-3xl font-bold text-white tracking-tight">{currentTabInfo.title}</h1>
+            <span className="badge py-0.5 px-2.5 bg-indigo-500/20 text-indigo-300 border-indigo-500/30 text-xs font-semibold">
+              {currentTabInfo.tag}
+            </span>
+          </div>
           <p className="text-slate-400">
-            Viewing comparative metrics across <span className="text-indigo-400 font-medium">{selectedRuns.length}</span> selected runs.
+            {currentTabInfo.subtitle} <span className="text-indigo-400 font-medium">({selectedRuns.length} runs active)</span>
           </p>
         </div>
         
@@ -874,7 +958,6 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
                 <BarChart2 className="w-6 h-6 text-indigo-400" />
               </div>
               <h2 className="text-2xl font-bold text-white">All Games Aggregate Performance</h2>
-              {compareTab === 'vs_ale' && <span className="badge ml-2">vs. Baselines</span>}
             </div>
 
             {compareTab === 'vs_ale' ? (
@@ -884,7 +967,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
                   <div className="flex items-center justify-between mb-6">
                     <div>
                       <h3 className="text-base font-semibold text-white tracking-wide">Pixel-based RL (All Selected Games)</h3>
-                      <p className="text-xs text-slate-400">JAXAtari (Pixel) vs. ALE (In-house) & Reported Baselines</p>
+                      <p className="text-xs text-slate-400">JAXAtari (Pixel) vs. ALE (In-house)</p>
                     </div>
                     <div className="flex items-center gap-3">
                       <label className="flex items-center gap-2 cursor-pointer group/toggle">
@@ -1059,7 +1142,7 @@ const GameSection = React.memo(({ game, gameRuns, runInfos, metricsData, setMetr
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h3 className="text-base font-semibold text-white tracking-wide">Pixel-based RL</h3>
-                <p className="text-xs text-slate-400">JAXAtari (Pixel) vs. ALE (In-house) & Reported Baselines</p>
+                <p className="text-xs text-slate-400">JAXAtari (Pixel) vs. ALE (In-house)</p>
               </div>
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-2 cursor-pointer group/toggle">

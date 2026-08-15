@@ -76,7 +76,23 @@ const Sidebar: React.FC<SidebarProps> = ({ theme = 'light', toggleTheme }) => {
                   className={({isActive}) => `sidebar-link text-xs py-2 px-3 ${isActive ? 'active text-indigo-300 font-semibold' : 'text-slate-400 hover:text-white'}`}
                 >
                   <Layers className="w-3.5 h-3.5" />
-                  <span>On JAXAtari</span>
+                  <span>All JAXAtari Runs</span>
+                </NavLink>
+
+                <NavLink
+                  to="/compare_env_scaling"
+                  className={({isActive}) => `sidebar-link text-xs py-2 px-3 ${isActive ? 'active text-indigo-300 font-semibold' : 'text-slate-400 hover:text-white'}`}
+                >
+                  <Activity className="w-3.5 h-3.5" />
+                  <span>Env Scalability (1→8192)</span>
+                </NavLink>
+
+                <NavLink
+                  to="/compare_algorithms"
+                  className={({isActive}) => `sidebar-link text-xs py-2 px-3 ${isActive ? 'active text-indigo-300 font-semibold' : 'text-slate-400 hover:text-white'}`}
+                >
+                  <BarChart2 className="w-3.5 h-3.5" />
+                  <span>Algorithm Comparison</span>
                 </NavLink>
 
                 <NavLink
