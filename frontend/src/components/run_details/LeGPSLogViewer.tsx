@@ -40,7 +40,7 @@ const formatLeGPSLogs = (rawLogs: string, currentRunId: string): string => {
     }
   );
 
-  // 3. Keep Failure Localization header above, place Video on left & details on right inside flex card with corresponding iteration number
+  // 3. Keep Failure Localization header above, annotate with analyzed score/seed, place Video on left & details on right inside flex card
   let currentIter = 0;
   const sections = formatted.split(/(?=#\s+🔄?\s*Iteration\s+\d+)/g);
   formatted = sections.map(sec => {
@@ -48,11 +48,25 @@ const formatLeGPSLogs = (rawLogs: string, currentRunId: string): string => {
     if (iterMatch) {
       currentIter = parseInt(iterMatch[1], 10);
     }
+    
+    // Extract evaluated score & seed from this iteration's Evaluation section
+    const realReturnMatch = sec.match(/-\s*\*\*Real Return:\*\*\s*([\d.]+)/i);
+    const worstReturnMatch = sec.match(/-\s*\*\*Robustness \(Min\):\*\*\s*([\d.]+)/i);
+    const worstSeedMatch = sec.match(/-\s*\*\*Worst Seed:\*\*\s*(\d+)/i);
+    
+    const analyzedScore = worstReturnMatch ? worstReturnMatch[1] : realReturnMatch ? realReturnMatch[1] : null;
+    const analyzedSeed = worstSeedMatch ? worstSeedMatch[1] : null;
+
+    let scoreBadge = '';
+    if (analyzedScore !== null) {
+      scoreBadge = ` &nbsp;<span style="font-size:0.75rem; font-weight:600; padding:2px 8px; border-radius:6px; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3); color:#fca5a5;">🎯 Analyzed Rollout: Score ${analyzedScore}${analyzedSeed !== null ? ` (Worst Seed ${analyzedSeed})` : ''}</span>`;
+    }
+
     return sec.replace(
       /(###\s+🔍?\s*Failure Localization[^\r\n]*)(?:\r?\n+)([\s\S]*?)(?=(?:\r?\n\r?\n###|\r?\n\r?\n#|\r?\n\r?\n---|$))/g,
       (_, header, body) => {
         let bodyFormatted = body.trim().replace(/^\*\*Token Usage:\*\*/m, '- **Token Usage:**');
-        return `${header}\n\n<div className="loc-flex-section">\n\n<div className="loc-video-wrapper">\n\n<video data-runid="${currentRunId}" data-iter="${currentIter}"></video>\n\n</div>\n\n<div className="loc-flex-content">\n\n${bodyFormatted}\n\n</div>\n\n</div>`;
+        return `${header}${scoreBadge}\n\n<div className="loc-flex-section">\n\n<div className="loc-video-wrapper">\n\n<video data-runid="${currentRunId}" data-iter="${currentIter}"></video>\n\n</div>\n\n<div className="loc-flex-content">\n\n${bodyFormatted}\n\n</div>\n\n</div>`;
       }
     );
   }).join('');

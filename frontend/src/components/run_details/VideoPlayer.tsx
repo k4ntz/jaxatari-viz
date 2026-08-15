@@ -2,11 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { renderRunVideo, checkRunVideo } from '../../api';
 import { Film, Loader2 } from 'lucide-react';
 
-export const getFullVideoUrl = (rawUrl: string) => {
+export const getFullVideoUrl = (rawUrl: string, ts?: number) => {
   if (!rawUrl) return '';
   const cleanUrl = rawUrl.startsWith('http://localhost:8000') ? rawUrl.replace('http://localhost:8000', '') : rawUrl;
   const parts = cleanUrl.split('/').map(p => encodeURIComponent(decodeURIComponent(p)));
-  return `http://localhost:8000${parts.join('/')}`;
+  const base = `http://localhost:8000${parts.join('/')}`;
+  return ts ? `${base}?t=${ts}` : base;
 };
 
 export const VideoPlayer: React.FC<{ runId: string; iter: number }> = ({ runId, iter }) => {
@@ -20,13 +21,13 @@ export const VideoPlayer: React.FC<{ runId: string; iter: number }> = ({ runId, 
     let isMounted = true;
     checkRunVideo(runId, iter).then(status => {
       if (isMounted && status.exists && status.video_url) {
-        setVideoUrl(getFullVideoUrl(status.video_url));
+        setVideoUrl(getFullVideoUrl(status.video_url, Date.now()));
       }
     }).catch(() => {});
     return () => { isMounted = false; };
   }, [runId, iter]);
 
-  const handleRender = async () => {
+  const handleRender = async (force: boolean = false) => {
     setLoading(true);
     setError(null);
     setProgress(5);
@@ -39,7 +40,7 @@ export const VideoPlayer: React.FC<{ runId: string; iter: number }> = ({ runId, 
         if (st.progress !== undefined) setProgress(st.progress);
         if (st.stage) setStage(st.stage);
         if (st.exists && st.video_url) {
-          setVideoUrl(getFullVideoUrl(st.video_url));
+          setVideoUrl(getFullVideoUrl(st.video_url, Date.now()));
           setLoading(false);
           if (timer) clearInterval(timer);
         }
@@ -51,14 +52,21 @@ export const VideoPlayer: React.FC<{ runId: string; iter: number }> = ({ runId, 
     timer = setInterval(pollStatus, 500);
 
     try {
-      const url = await renderRunVideo(runId, iter);
+      const url = await renderRunVideo(runId, iter, force);
       if (url) {
-        setVideoUrl(getFullVideoUrl(url));
+        setVideoUrl(getFullVideoUrl(url, Date.now()));
         setProgress(100);
         setStage('Complete!');
       }
     } catch (e: any) {
-      const detail = e.response?.data?.detail || e.message || 'Failed to render video.';
+      let detail = e.response?.data?.detail || e.message || 'Failed to render video.';
+      if (typeof detail === 'object') {
+        try {
+          detail = JSON.stringify(detail);
+        } catch {
+          detail = String(detail);
+        }
+      }
       setError(`Failed to render video: ${detail}`);
     } finally {
       if (timer) clearInterval(timer);
@@ -70,7 +78,7 @@ export const VideoPlayer: React.FC<{ runId: string; iter: number }> = ({ runId, 
     <div className="my-3">
       {!videoUrl && !loading && (
         <button
-          onClick={handleRender}
+          onClick={() => handleRender(false)}
           className="inline-flex items-center gap-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
         >
           <Film className="w-4 h-4 text-indigo-400" /> Render Failure Rollout Video
@@ -99,8 +107,20 @@ export const VideoPlayer: React.FC<{ runId: string; iter: number }> = ({ runId, 
         </div>
       )}
       {videoUrl && (
-        <div className="mt-3 rounded-xl overflow-hidden border border-[#2e334d] bg-black shadow-lg" style={{ width: '280px', maxWidth: '100%' }}>
-          <video key={videoUrl} src={videoUrl} controls autoPlay className="rounded-xl block" style={{ width: '280px', height: 'auto', display: 'block' }} />
+        <div className="mt-3 flex flex-col gap-1.5" style={{ width: '280px', maxWidth: '100%' }}>
+          <div className="rounded-xl overflow-hidden border border-[#2e334d] bg-black shadow-lg">
+            <video key={videoUrl} src={videoUrl} controls autoPlay className="rounded-xl block" style={{ width: '280px', height: 'auto', display: 'block' }} />
+          </div>
+          <div className="flex justify-end">
+            <button
+              onClick={() => handleRender(true)}
+              disabled={loading}
+              className="text-[11px] text-slate-400 hover:text-indigo-300 flex items-center gap-1 transition-colors px-1 py-0.5"
+              title="Force re-render rollout video matching exact evaluation seed"
+            >
+              <Film className="w-3 h-3" /> Re-render video
+            </button>
+          </div>
         </div>
       )}
     </div>

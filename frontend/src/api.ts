@@ -128,8 +128,8 @@ export interface VideoStatus {
   error?: string | null;
 }
 
-export const renderRunVideo = async (runId: string, iter: number = 0) => {
-  const response = await axios.post(`${API_BASE}/runs/${encodeURIComponent(runId)}/render?iter=${iter}`);
+export const renderRunVideo = async (runId: string, iter: number = 0, force: boolean = false) => {
+  const response = await axios.post(`${API_BASE}/runs/${encodeURIComponent(runId)}/render?iter=${iter}&force=${force}`);
   return response.data.video_url;
 };
 

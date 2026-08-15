@@ -485,7 +485,7 @@ async def serve_video(request: Request):
 _RENDER_JOBS: Dict[str, Dict[str, Any]] = {}
 
 @app.post("/api/runs/{run_id:path}/render")
-def render_video(run_id: str, iter: Optional[int] = 0):
+def render_video(run_id: str, iter: Optional[int] = 0, force: Optional[bool] = False):
     from urllib.parse import unquote
     run_id = unquote(run_id)
 
@@ -518,12 +518,34 @@ def render_video(run_id: str, iter: Optional[int] = 0):
             detail=f"Policy file not found for iter {iter} in {run_path} (checked iter{iter:02d}.py and best_policy.py)"
         )
 
+    params_file = run_path / "params" / f"iter{iter:02d}_best.json"
+    if not params_file.exists():
+        params_file = run_path / "best.json"
+
+    eval_file = run_path / "metrics" / f"iter{iter:02d}_eval.json"
+    worst_seed = -1
+    if eval_file.exists():
+        try:
+            eval_data = json.loads(eval_file.read_text())
+            if "robust_worst_seed" in eval_data:
+                worst_seed = int(eval_data["robust_worst_seed"])
+            elif "log_rollout_seed" in eval_data:
+                worst_seed = int(eval_data["log_rollout_seed"])
+        except Exception:
+            pass
+
     videos_dir = run_path / "videos"
     videos_dir.mkdir(parents=True, exist_ok=True)
     video_filename = f"iter{iter:02d}.mp4"
     video_path = videos_dir / video_filename
 
     job_key = f"{run_id}::{iter}"
+
+    if force and video_path.exists():
+        try:
+            video_path.unlink()
+        except Exception:
+            pass
 
     if not video_path.exists():
         render_script = Path(__file__).parent.parent.parent / "thesis" / "scripts" / "render.py"
@@ -550,6 +572,13 @@ def render_video(run_id: str, iter: Optional[int] = 0):
             "--noise", str(noise),
             "--out", str(video_path)
         ]
+        config_file = run_path / "config.json"
+        if config_file.exists():
+            cmd.extend(["--config", str(config_file)])
+        if params_file.exists():
+            cmd.extend(["--params", str(params_file)])
+        if worst_seed >= 0:
+            cmd.extend(["--seed", str(worst_seed)])
 
         _RENDER_JOBS[job_key] = {
             "rendering": True,
