@@ -9,4 +9,5 @@ jax
 jaxlib
 flax
 imageio
+imageio-ffmpeg
 numpy

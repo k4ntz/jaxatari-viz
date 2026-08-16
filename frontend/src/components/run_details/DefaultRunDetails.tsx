@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import { RunHeader } from './RunHeader';
 import { MetricsGraphs } from './MetricsGraphs';
 import { RawLogViewer } from './RawLogViewer';
-import type { RunInfo } from '../../api';
+import type { EvaluationRecord, RunInfo } from '../../api';
 
 export interface RunDetailProps {
   runInfo: RunInfo;
   metrics: any[];
   logs: string;
+  evaluations?: EvaluationRecord[];
 }
 
 export const DefaultRunDetails: React.FC<RunDetailProps> = ({ runInfo, metrics, logs }) => {

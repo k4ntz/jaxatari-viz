@@ -4,8 +4,9 @@ import { MetricsGraphs } from './MetricsGraphs';
 import { LeGPSLogViewer } from './LeGPSLogViewer';
 import { Sparkles, Dna, Cpu } from 'lucide-react';
 import type { RunDetailProps } from './DefaultRunDetails';
+import { EvaluationDashboard } from './EvaluationDashboard';
 
-export const LeGPSRunDetails: React.FC<RunDetailProps> = ({ runInfo, metrics, logs }) => {
+export const LeGPSRunDetails: React.FC<RunDetailProps> = ({ runInfo, metrics, logs, evaluations = [] }) => {
   const [showConfig, setShowConfig] = useState(false);
 
   return (
@@ -55,8 +56,10 @@ export const LeGPSRunDetails: React.FC<RunDetailProps> = ({ runInfo, metrics, lo
         {/* Metric Curves */}
         <MetricsGraphs metrics={metrics} />
 
+        <EvaluationDashboard runId={runInfo.id} evaluations={evaluations} />
+
         {/* LeGPS Rich Interactive Markdown Logs & Iteration Rollout Video Players */}
-        <LeGPSLogViewer logs={logs} runId={runInfo.id} />
+        <LeGPSLogViewer logs={logs} runId={runInfo.id} evaluations={evaluations} />
       </div>
     </div>
   );

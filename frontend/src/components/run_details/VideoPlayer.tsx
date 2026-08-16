@@ -4,10 +4,10 @@ import { Film, Loader2 } from 'lucide-react';
 
 export const getFullVideoUrl = (rawUrl: string, ts?: number) => {
   if (!rawUrl) return '';
-  const cleanUrl = rawUrl.startsWith('http://localhost:8000') ? rawUrl.replace('http://localhost:8000', '') : rawUrl;
-  const parts = cleanUrl.split('/').map(p => encodeURIComponent(decodeURIComponent(p)));
-  const base = `http://localhost:8000${parts.join('/')}`;
-  return ts ? `${base}?t=${ts}` : base;
+  const url = new URL(rawUrl, window.location.origin);
+  url.pathname = url.pathname.split('/').map(part => encodeURIComponent(decodeURIComponent(part))).join('/');
+  if (ts) url.searchParams.set('t', String(ts));
+  return url.toString();
 };
 
 export const VideoPlayer: React.FC<{ runId: string; iter: number }> = ({ runId, iter }) => {
@@ -16,12 +16,15 @@ export const VideoPlayer: React.FC<{ runId: string; iter: number }> = ({ runId, 
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [staleReason, setStaleReason] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
     checkRunVideo(runId, iter).then(status => {
       if (isMounted && status.exists && status.video_url) {
         setVideoUrl(getFullVideoUrl(status.video_url, Date.now()));
+      } else if (isMounted && status.stale) {
+        setStaleReason(status.stale_reason || 'Existing media has no matching provenance manifest.');
       }
     }).catch(() => {});
     return () => { isMounted = false; };
@@ -77,12 +80,19 @@ export const VideoPlayer: React.FC<{ runId: string; iter: number }> = ({ runId, 
   return (
     <div className="my-3">
       {!videoUrl && !loading && (
-        <button
-          onClick={() => handleRender(false)}
-          className="inline-flex items-center gap-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-        >
-          <Film className="w-4 h-4 text-indigo-400" /> Render Failure Rollout Video
-        </button>
+        <div className="flex flex-col gap-2 items-start">
+          {staleReason && (
+            <div className="text-amber-300 text-xs bg-amber-500/10 border border-amber-500/20 p-2 rounded-lg max-w-xl">
+              Stale video refused: {staleReason}
+            </div>
+          )}
+          <button
+            onClick={() => handleRender(false)}
+            className="inline-flex items-center gap-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+          >
+            <Film className="w-4 h-4 text-indigo-400" /> Render and verify exact rollout
+          </button>
+        </div>
       )}
       {loading && (
         <div className="flex flex-col gap-2 p-3 bg-[#16192b] border border-indigo-500/30 rounded-xl max-w-sm my-2 shadow-lg">
@@ -109,7 +119,7 @@ export const VideoPlayer: React.FC<{ runId: string; iter: number }> = ({ runId, 
       {videoUrl && (
         <div className="mt-3 flex flex-col gap-1.5" style={{ width: '280px', maxWidth: '100%' }}>
           <div className="rounded-xl overflow-hidden border border-[#2e334d] bg-black shadow-lg">
-            <video key={videoUrl} src={videoUrl} controls autoPlay className="rounded-xl block" style={{ width: '280px', height: 'auto', display: 'block' }} />
+            <video key={videoUrl} src={videoUrl} controls playsInline className="rounded-xl block" style={{ width: '280px', height: 'auto', display: 'block' }} />
           </div>
           <div className="flex justify-end">
             <button

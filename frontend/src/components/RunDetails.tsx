@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { fetchRunMetrics, fetchRunLogs, fetchRuns, type RunInfo } from '../api';
+import { fetchRunEvaluations, fetchRunMetrics, fetchRunLogs, fetchRuns, type EvaluationRecord, type RunInfo } from '../api';
 import { ArrowLeft } from 'lucide-react';
 import { DefaultRunDetails, BlendRLRunDetails, LeGPSRunDetails } from './run_details';
 
@@ -11,22 +11,40 @@ const RunDetails: React.FC = () => {
   const [runInfo, setRunInfo] = useState<RunInfo | null>(null);
   const [metrics, setMetrics] = useState<any[]>([]);
   const [logs, setLogs] = useState<string>('');
+  const [evaluations, setEvaluations] = useState<EvaluationRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!runId) return;
-    
+    let active = true;
     setLoading(true);
     Promise.all([
       fetchRuns().then(runs => runs.find(r => r.id === runId) || null),
       fetchRunMetrics(runId).catch(() => []),
-      fetchRunLogs(runId).catch(() => 'Failed to load logs.')
-    ]).then(([info, met, lgs]) => {
+      fetchRunLogs(runId).catch(() => 'Failed to load logs.'),
+      fetchRunEvaluations(runId).catch(() => [])
+    ]).then(([info, met, lgs, evalRows]) => {
+      if (!active) return;
       setRunInfo(info);
       setMetrics(met);
       setLogs(lgs);
+      setEvaluations(evalRows);
       setLoading(false);
     });
+    const refreshTimer = window.setInterval(() => {
+      Promise.all([
+        fetchRunMetrics(runId, true).catch(() => null),
+        fetchRunEvaluations(runId, true).catch(() => null),
+      ]).then(([met, evalRows]) => {
+        if (!active) return;
+        if (met) setMetrics(met);
+        if (evalRows) setEvaluations(evalRows);
+      });
+    }, 5_000);
+    return () => {
+      active = false;
+      window.clearInterval(refreshTimer);
+    };
   }, [runId]);
 
   if (loading) {
@@ -56,7 +74,7 @@ const RunDetails: React.FC = () => {
 
   // Route to specialized viewer depending on algorithm family:
   if (methodStr.includes('legps') || methodStr.includes('cma') || idStr.includes('legps')) {
-    return <LeGPSRunDetails runInfo={runInfo} metrics={metrics} logs={logs} />;
+    return <LeGPSRunDetails runInfo={runInfo} metrics={metrics} logs={logs} evaluations={evaluations} />;
   }
 
   if (methodStr.includes('blend') || idStr.includes('blend')) {

@@ -1,7 +1,9 @@
 # JAXAtari-Viz Configuration File
 # Unified run directories and scientific evaluation settings
 
-ale_baselines_file: "/Users/kantoz/Research/legps/thesis/data/baselines.csv"
+ale_baselines_file: "${THESIS_BASELINES_FILE:-../thesis/data/baselines.csv}"
+jaxatari_dir: "${JAXATARI_DIR:-../JAXAtari}"
+render_script: "${THESIS_RENDER_SCRIPT:-../thesis/scripts/render.py}"
 
 # Global algorithm color mappings for consistent graph visualization
 algorithm_colors:
@@ -34,7 +36,7 @@ algorithm_default_envs:
 
 projects:
   - name: "Thesis LLM Policy Search"
-    runs_dir: "/Users/kantoz/Research/legps/thesis/runs_quentin"
+    runs_dir: "${THESIS_RUNS_DIR:-../thesis/runs_quentin}"
     adapter: "cma_jsonl"
     backend: "jaxatari"
     obs_type: "oc"
@@ -43,7 +45,7 @@ projects:
     color: "#818cf8"
 
   - name: "WandB Downloads"
-    runs_dir: "/Users/kantoz/Research/legps/wandb_downloads"
+    runs_dir: "${WANDB_RUNS_DIR:-../wandb_downloads}"
     adapter: "wandb"
     backend: "jaxatari"
     obs_type: "pixels"
@@ -52,5 +54,5 @@ projects:
     color: "#34d399"
 
 server:
-  host: "0.0.0.0"
+  host: "127.0.0.1"
   port: 8000

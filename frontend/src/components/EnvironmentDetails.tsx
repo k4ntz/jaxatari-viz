@@ -87,7 +87,7 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
             selectedMethod: 'all',
             selectedObsType: 'all',
             selectedBackend: 'all',
-            sortMetric: 'max_ret_mean',
+            sortMetric: 'comparison_score',
             sortOrder: 'desc'
           };
     } catch {
@@ -95,13 +95,14 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
         selectedMethod: 'all',
         selectedObsType: 'all',
         selectedBackend: 'all',
-        sortMetric: 'max_ret_mean',
+        sortMetric: 'comparison_score',
         sortOrder: 'desc'
       };
     }
   });
 
-  const { selectedMethod, selectedObsType, selectedBackend, sortMetric, sortOrder } = savedFilters;
+  const { selectedMethod, selectedObsType, selectedBackend, sortOrder } = savedFilters;
+  const sortMetric = savedFilters.sortMetric === 'max_ret_mean' ? 'comparison_score' : savedFilters.sortMetric;
 
   const updateFilters = (newFilters: Partial<typeof savedFilters>) => {
     setSavedFilters((prev: any) => {
@@ -207,7 +208,7 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
 
     jaxRuns.forEach((run: any) => {
       const method = run.method || run.config?.method || 'Unknown';
-      const ret = run.max_ret_mean ?? run.max_best_fitness;
+      const ret = run.comparison_score;
       if (ret !== undefined && ret !== null) {
         if (!methodValues[method]) methodValues[method] = [];
         methodValues[method].push(ret);
@@ -229,7 +230,7 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
 
     sortedRuns.forEach((run: any) => {
       const method = run.method || run.config?.method || 'Unknown';
-      const ret = run.max_ret_mean ?? run.max_best_fitness;
+      const ret = run.comparison_score;
       if (ret !== undefined && ret !== null) {
         if (!methodValues[method]) methodValues[method] = [];
         methodValues[method].push(ret);
@@ -259,8 +260,8 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
       if (!methodSteps[method]) methodSteps[method] = {};
 
       mList.forEach((m: any) => {
-        const step = m.gen ?? m.iteration ?? m.step ?? m._step;
-        const ret = m.ret_mean ?? m.best_fitness ?? m['charts/episodic_return'] ?? m.reward;
+        const step = m.global_gen ?? m.global_step ?? m.step ?? m._step ?? m.iteration ?? m.gen;
+        const ret = m.ret_mean;
         if (step !== undefined && ret !== undefined && ret !== null) {
           if (!methodSteps[method][step]) methodSteps[method][step] = [];
           methodSteps[method][step].push(ret);
@@ -304,7 +305,6 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
   // Score Evolution Line Plot (Aggregated across seeds) for JAXAtari vs ALE
   const vsAleAggLineData = useMemo(() => {
     const methodSteps: Record<string, Record<number, number[]>> = {};
-    let maxX = 0;
 
     sortedRuns.forEach((run: any) => {
       const method = run.method || run.config?.method || 'Unknown';
@@ -313,10 +313,9 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
       if (!methodSteps[method]) methodSteps[method] = {};
 
       mList.forEach((m: any) => {
-        const step = m.gen ?? m.iteration ?? m.step ?? m._step;
-        const ret = m.ret_mean ?? m.best_fitness ?? m['charts/episodic_return'] ?? m.reward;
+        const step = m.global_gen ?? m.global_step ?? m.step ?? m._step ?? m.iteration ?? m.gen;
+        const ret = m.ret_mean;
         if (step !== undefined && ret !== undefined && ret !== null) {
-          if (step > maxX) maxX = step;
           if (!methodSteps[method][step]) methodSteps[method][step] = [];
           methodSteps[method][step].push(ret);
         }
@@ -453,7 +452,7 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
             <div className="w-full h-44 bg-[#0f111a] border border-[#2e334d] rounded-lg overflow-hidden flex items-center justify-center relative shadow-inner">
               {envInfo.has_gif ? (
                 <img
-                  src={`http://localhost:8000${envInfo.gif_url}`}
+                  src={envInfo.gif_url || undefined}
                   alt={envInfo.name}
                   className="h-full w-full object-contain"
                 />
@@ -693,7 +692,7 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
               onChange={e => updateFilters({ sortMetric: e.target.value })}
               className="bg-[rgba(0,0,0,0.3)] border border-[#2e334d] rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-indigo-500"
             >
-              <option value="max_ret_mean">Max Return (Mean)</option>
+              <option value="comparison_score">Protocol comparison score</option>
               <option value="max_best_fitness">Max Best Fitness</option>
               <option value="min_y_best">Min Best Loss / Cost</option>
               <option value="id">Run ID</option>
@@ -748,8 +747,8 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
                     </div>
                   </div>
                   <div className="flex items-center gap-3 text-xs font-mono">
-                    {run.max_ret_mean !== null && (
-                      <span className="text-emerald-400 font-bold">Ret: {run.max_ret_mean}</span>
+                    {run.comparison_score !== null && run.comparison_score !== undefined && (
+                      <span className="text-emerald-400 font-bold" title={run.comparison_score_source}>Score: {run.comparison_score}</span>
                     )}
                     {run.max_best_fitness !== null && (
                       <span className="text-indigo-400 font-bold">Fit: {run.max_best_fitness}</span>

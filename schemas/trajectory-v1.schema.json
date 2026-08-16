@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/k4ntz/jaxatari-viz/schemas/trajectory-v1.schema.json",
+  "title": "Portable JAXAtari trajectory manifest",
+  "type": "object",
+  "required": ["schema_version", "data_file", "sha256", "game", "outer_iter", "seed", "decision_count", "return"],
+  "properties": {
+    "schema_version": { "enum": ["jaxatari-viz.trajectory.v1", "legps.trajectory.v1"] },
+    "registry_schema": { "const": "legps.run-manifest.v1" },
+    "artifact_id": { "type": "string", "minLength": 1 },
+    "data_file": { "type": "string", "pattern": "^trajectories/[^/]+\\.(jsonl|json|json\\.gz)$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "run_uuid": { "type": "string", "minLength": 8 },
+    "game": { "type": "string", "minLength": 1 },
+    "outer_iter": { "type": "integer", "minimum": 0 },
+    "seed": { "type": "integer", "minimum": 0 },
+    "decision_count": { "type": "integer", "minimum": 0 },
+    "return": { "type": "number" },
+    "policy_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "params_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "config_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "environment_commit": { "type": ["string", "null"] }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "schema_version": { "const": "jaxatari-viz.trajectory.v1" } } },
+      "then": { "required": ["run_uuid"] },
+      "else": { "required": ["registry_schema", "artifact_id"] }
+    }
+  ],
+  "additionalProperties": true
+}

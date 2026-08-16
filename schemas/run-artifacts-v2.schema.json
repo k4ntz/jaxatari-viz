@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/k4ntz/jaxatari-viz/schemas/run-artifacts-v2.schema.json",
+  "title": "JAXAtari-Viz normalized run artifact",
+  "oneOf": [
+    { "$ref": "#/$defs/cmaGeneration" },
+    { "$ref": "#/$defs/evaluation" }
+  ],
+  "$defs": {
+    "cmaGeneration": {
+      "type": "object",
+      "required": ["schema_version", "record_type", "outer_iter", "local_gen", "global_gen", "best_fitness"],
+      "properties": {
+        "schema_version": { "const": "jaxatari-viz.artifacts.v2" },
+        "record_type": { "const": "cma_generation" },
+        "outer_iter": { "type": "integer" },
+        "local_gen": { "type": "integer", "minimum": 0 },
+        "global_gen": { "type": "integer", "minimum": 0 },
+        "global_gen_source": { "enum": ["artifact", "viewer_fallback"] },
+        "best_fitness": { "type": "number" },
+        "incumbent_fitness": { "type": ["number", "null"] },
+        "fitness_delta": { "type": ["number", "null"] },
+        "challenger_accepted": { "type": ["boolean", "null"] },
+        "incumbent_updated": { "type": ["boolean", "null"] },
+        "cma_sigma_before": { "type": ["number", "null"] },
+        "cma_sigma_after": { "type": ["number", "null"] },
+        "cma_condition_number": { "type": ["number", "null"] },
+        "population_coordinate_std_mean": { "type": ["number", "null"] },
+        "population_distance_from_incumbent_mean": { "type": ["number", "null"] },
+        "challenger_distance_from_incumbent": { "type": ["number", "null"] },
+        "boundary_parameter_fraction": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "boundary_candidate_fraction": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "search_seeds": { "type": "array", "items": { "type": "integer" } },
+        "monitor_seeds": { "type": "array", "items": { "type": "integer" } },
+        "search_seed_set_id": { "type": ["string", "null"] },
+        "monitor_seed_set_id": { "type": ["string", "null"] },
+        "seed_set_id": { "type": ["string", "null"] },
+        "seed_set_inferred": { "type": "boolean" }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "required": ["schema_version", "record_type", "outer_iter", "noisy", "clean", "sticky", "trajectory"],
+      "properties": {
+        "schema_version": { "const": "jaxatari-viz.artifacts.v2" },
+        "record_type": { "const": "evaluation" },
+        "outer_iter": { "type": "integer" },
+        "outer_accepted": { "type": ["boolean", "null"] },
+        "noisy": {
+          "type": "object",
+          "required": ["returns", "min_return_seed", "localization_seed", "selection_criterion"],
+          "properties": {
+            "returns": { "type": "array", "items": { "type": "number" } },
+            "min_return_seed": { "type": ["integer", "null"] },
+            "localization_seed": { "type": ["integer", "null"] },
+            "selection_criterion": { "const": "lexicographic(progress, return)" }
+          }
+        },
+        "clean": { "type": "object" },
+        "sticky": { "type": "object" },
+        "trajectory": { "type": "object" }
+      }
+    }
+  }
+}

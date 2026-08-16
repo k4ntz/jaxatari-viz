@@ -1,13 +1,23 @@
 import os
 import json
+import hashlib
+import math
+import re
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import yaml
 
 _PARSED_METRICS_CACHE: Dict[str, tuple[float, List[Dict[str, Any]]]] = {}
+ARTIFACT_SCHEMA_VERSION = "jaxatari-viz.artifacts.v2"
 
 class RunAdapter:
     """Base interface for parsing run metrics, configs, and logs."""
+
+    def __init__(self):
+        self.diagnostics: List[Dict[str, Any]] = []
+
+    def diagnostic(self, kind: str, path: Path, message: str) -> None:
+        self.diagnostics.append({"kind": kind, "path": str(path), "message": message})
     
     def parse_config(self, run_path: Path) -> Optional[Dict[str, Any]]:
         config_path = run_path / "config.json"
@@ -15,12 +25,161 @@ class RunAdapter:
             try:
                 with open(config_path, "r") as f:
                     return json.load(f)
-            except Exception:
-                pass
+            except (OSError, json.JSONDecodeError) as exc:
+                self.diagnostic("config_parse_error", config_path, str(exc))
         return None
 
     def parse_metrics(self, run_path: Path) -> List[Dict[str, Any]]:
         raise NotImplementedError
+
+    def parse_evaluations(self, run_path: Path) -> List[Dict[str, Any]]:
+        """Read the report-evaluation artifacts without reparsing human-facing Markdown.
+
+        The noisy minimum-return episode and the rollout selected for localization are
+        deliberately represented separately: the pipeline selects the latter by the
+        lexicographic (progress, return) criterion, so they need not be the same seed.
+        """
+        metrics_path = run_path / "metrics"
+        if not metrics_path.exists():
+            return []
+
+        verdicts = self._parse_outer_verdicts(run_path)
+        best_iter = None
+        best_path = run_path / "best.json"
+        if best_path.exists():
+            try:
+                best_iter = int(json.loads(best_path.read_text(encoding="utf-8")).get("iter"))
+            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                best_iter = None
+
+        rows: List[Dict[str, Any]] = []
+        for path in sorted(metrics_path.glob("iter*_eval.json")):
+            match = re.search(r"iter(-?\d+)_eval\.json$", path.name)
+            if not match:
+                continue
+            outer_iter = int(match.group(1))
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                self.diagnostic("evaluation_parse_error", path, str(exc))
+                continue
+            if not isinstance(raw, dict):
+                continue
+
+            dev = raw.get("candidate_dev") if isinstance(raw.get("candidate_dev"), dict) else raw
+            trace = raw.get("candidate_trace") if isinstance(raw.get("candidate_trace"), dict) else raw
+            clean_payload = (raw.get("candidate_clean") if isinstance(raw.get("candidate_clean"), dict)
+                             else raw.get("clean") if isinstance(raw.get("clean"), dict) else raw)
+            sticky_payload = raw.get("sticky") if isinstance(raw.get("sticky"), dict) else raw
+
+            returns = [float(value) for value in dev.get("robust_returns", [])
+                       if isinstance(value, (int, float))]
+            seed_values = [int(value) for value in dev.get("robust_seed_values", [])
+                           if isinstance(value, (int, float))]
+            if len(seed_values) != len(returns):
+                seed_values = list(range(len(returns)))
+            min_return_seed = None
+            min_return = dev.get("robust_return_min")
+            if returns:
+                min_index = min(range(len(returns)), key=lambda index: returns[index])
+                min_return_seed = seed_values[min_index]
+                if min_return is None:
+                    min_return = returns[min_index]
+
+            localization_seed = dev.get("robust_worst_seed", trace.get("log_rollout_seed"))
+            localization_return = dev.get("robust_worst_return")
+            if localization_return is None and localization_seed in seed_values:
+                localization_return = returns[seed_values.index(localization_seed)]
+
+            accepted = raw.get("accepted") if isinstance(raw.get("accepted"), bool) else verdicts.get(outer_iter)
+            if isinstance(raw.get("accepted"), bool):
+                accepted_source = "evaluation_json"
+            elif accepted is None and best_iter is not None:
+                # best.json only identifies the final champion, not every historical
+                # acceptance. Keep the provenance explicit instead of inventing history.
+                accepted_source = "final_champion_only"
+                accepted = True if outer_iter == best_iter else None
+            elif accepted is not None:
+                accepted_source = "detailed_log_verdict"
+            else:
+                accepted_source = "unavailable"
+
+            row = dict(raw)
+            row.update({
+                "schema_version": ARTIFACT_SCHEMA_VERSION,
+                "record_type": "evaluation",
+                "outer_iter": outer_iter,
+                "iteration": outer_iter,
+                "source_file": path.relative_to(run_path).as_posix(),
+                "deterministic_return": trace.get("deterministic_return"),
+                "robust_return_mean": dev.get("robust_return_mean"),
+                "robust_return_min": min_return,
+                "robust_return_std": dev.get("robust_return_std"),
+                "robust_returns": returns,
+                "no_noise_mean": clean_payload.get(
+                    "robust_return_mean", raw.get("clean_return_mean", raw.get("no_noise_mean"))),
+                "no_noise_min": clean_payload.get(
+                    "robust_return_min", raw.get("clean_return_min", raw.get("no_noise_min"))),
+                "noisy": {
+                    "seed_count": dev.get("robust_seeds"),
+                    "seed_values": seed_values,
+                    "returns": returns,
+                    "episodes": [{"seed": seed, "return": value}
+                                 for seed, value in zip(seed_values, returns)],
+                    "mean": dev.get("robust_return_mean"),
+                    "min": min_return,
+                    "std": dev.get("robust_return_std"),
+                    "min_return_seed": min_return_seed,
+                    "localization_seed": localization_seed,
+                    "localization_return": localization_return,
+                    "localization_progress": dev.get("robust_worst_climb"),
+                    "selection_criterion": "lexicographic(progress, return)",
+                },
+                "clean": {
+                    "mean": clean_payload.get(
+                        "robust_return_mean", raw.get("clean_return_mean", raw.get("no_noise_mean"))),
+                    "min": clean_payload.get(
+                        "robust_return_min", raw.get("clean_return_min", raw.get("no_noise_min"))),
+                },
+                "sticky": {
+                    "mean": sticky_payload.get("sticky_return_mean"),
+                    "std": sticky_payload.get("sticky_return_std"),
+                    "probability": sticky_payload.get("sticky_prob"),
+                    "seed_count": sticky_payload.get("sticky_seeds"),
+                },
+                "trajectory": {
+                    "legacy_rollout_id": raw.get("rollout_db_local_id", raw.get("rollout_id")),
+                    "trajectory_id": raw.get("trajectory_id"),
+                    "artifact_id": raw.get("trajectory_artifact_id"),
+                    "artifact": (raw.get("trajectory_artifacts", {}).get("candidate")
+                                 if isinstance(raw.get("trajectory_artifacts"), dict) else None),
+                    "decision_count": trace.get("n_frames"),
+                    "portable": bool(raw.get("trajectory_id") or raw.get("trajectory_artifact_id")),
+                },
+                "outer_accepted": accepted,
+                "outer_accepted_source": accepted_source,
+                "is_final_champion": best_iter is not None and outer_iter == best_iter,
+            })
+            rows.append(row)
+        return rows
+
+    @staticmethod
+    def _parse_outer_verdicts(run_path: Path) -> Dict[int, bool]:
+        path = run_path / "detailed_log.md"
+        if not path.exists():
+            return {}
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return {}
+        verdicts: Dict[int, bool] = {}
+        sections = re.split(r"(?m)(?=^#\s+[^\n]*Iteration\s+-?\d+\s*$)", text)
+        for section in sections:
+            iteration = re.search(r"(?m)^#\s+[^\n]*Iteration\s+(-?\d+)\s*$", section)
+            verdict = re.search(r"(?im)^-\s*\*\*Accepted:\*\*\s*(true|false)\s*$", section)
+            if iteration and verdict:
+                verdicts[int(iteration.group(1))] = verdict.group(1).lower() == "true"
+        return verdicts
 
     def parse_logs(self, run_path: Path, root_dir: Path, config_data: Dict[str, Any]) -> str:
         logs = ""
@@ -71,18 +230,108 @@ class CMAJsonlAdapter(RunAdapter):
         if not metrics_path.exists():
             return []
 
-        metrics_data = []
+        metrics_data: List[Dict[str, Any]] = []
+        config = self.parse_config(run_path) or {}
+        cma_seed = config.get("cma_seed")
+        eval_seed_count = config.get("eval_seeds")
+        previous_params: Optional[Dict[str, float]] = None
+        fallback_global_gen = 0
         for filepath in sorted(metrics_path.glob("iter*_cma.jsonl")):
+            file_iter_match = re.search(r"iter(-?\d+)_cma\.jsonl$", filepath.name)
+            file_iter = int(file_iter_match.group(1)) if file_iter_match else None
             try:
                 with open(filepath, "r") as f:
                     for line in f:
                         if line.strip():
                             try:
-                                metrics_data.append(json.loads(line))
-                            except json.JSONDecodeError:
+                                raw = json.loads(line)
+                            except json.JSONDecodeError as exc:
+                                self.diagnostic("cma_jsonl_parse_error", filepath, str(exc))
                                 continue
-            except Exception:
-                pass
+                            if not isinstance(raw, dict):
+                                continue
+                            row = dict(raw)
+                            outer_iter = int(row.get("iter", file_iter if file_iter is not None else 0))
+                            local_gen = int(row.get("gen", 0))
+                            challenger = row.get("best_fitness")
+                            incumbent = row.get("incumbent_fitness")
+                            delta = row.get("paired_search_delta")
+                            challenger_accepted = row.get("incumbent_updated")
+                            if isinstance(challenger, (int, float)) and isinstance(incumbent, (int, float)):
+                                if not isinstance(delta, (int, float)):
+                                    delta = float(challenger) - float(incumbent)
+                                if not isinstance(challenger_accepted, bool):
+                                    challenger_accepted = float(delta) > 0
+
+                            seed_values = row.get("search_seeds")
+                            seed_set_id = row.get("search_seed_set_id")
+                            seed_set_inferred = False
+                            if (not isinstance(seed_values, list) and not seed_set_id and
+                                    row.get("seed_protocol_version") is None and
+                                    isinstance(cma_seed, int) and isinstance(eval_seed_count, int)):
+                                seed_values = [1000 + cma_seed * 7919 + local_gen * 131 + index * 7
+                                               for index in range(eval_seed_count)]
+                                seed_digest = hashlib.sha256(json.dumps(seed_values).encode()).hexdigest()[:16]
+                                seed_set_id = f"inferred:{seed_digest}"
+                                seed_set_inferred = True
+
+                            params = row.get("best_real") if isinstance(row.get("best_real"), dict) else None
+                            param_l2_step = None
+                            param_schema_changed = False
+                            if params is not None and previous_params is not None:
+                                common = sorted(set(params).intersection(previous_params))
+                                param_schema_changed = set(params) != set(previous_params)
+                                if not param_schema_changed and common and all(isinstance(params[key], (int, float)) and
+                                                  isinstance(previous_params[key], (int, float)) for key in common):
+                                    param_l2_step = math.sqrt(sum(
+                                        (float(params[key]) - float(previous_params[key])) ** 2 for key in common
+                                    ))
+                            if params is not None:
+                                previous_params = {key: float(value) for key, value in params.items()
+                                                   if isinstance(value, (int, float))}
+
+                            diagnostic_fields = (
+                                "best_fitness", "mean_fitness", "incumbent_fitness", "ret_mean",
+                                "min_y_best", "max_level", "level_finished", "deaths_mean",
+                                "cma_sigma_before", "cma_sigma_after", "cma_condition_number",
+                                "population_coordinate_std_mean",
+                                "population_distance_from_incumbent_mean",
+                                "challenger_distance_from_incumbent",
+                                "boundary_parameter_fraction", "boundary_candidate_fraction",
+                                "search_seed_set_id", "monitor_seed_set_id", "incumbent_updated",
+                            )
+                            available = [key for key in diagnostic_fields if row.get(key) is not None]
+                            missing = [key for key in diagnostic_fields if row.get(key) is None]
+                            exact_global_gen = row.get("global_gen")
+                            if isinstance(exact_global_gen, int):
+                                fallback_global_gen = max(fallback_global_gen, exact_global_gen + 1)
+                            else:
+                                exact_global_gen = fallback_global_gen
+                                fallback_global_gen += 1
+                            row.update({
+                                "schema_version": ARTIFACT_SCHEMA_VERSION,
+                                "record_type": "cma_generation",
+                                "outer_iter": outer_iter,
+                                "local_gen": local_gen,
+                                "global_gen": exact_global_gen,
+                                "global_gen_source": ("artifact" if isinstance(raw.get("global_gen"), int)
+                                                      else "viewer_fallback"),
+                                "challenger_fitness": challenger,
+                                "fitness_delta": delta,
+                                "challenger_accepted": challenger_accepted,
+                                "seed_set_id": seed_set_id,
+                                "seed_set": seed_values,
+                                "seed_set_inferred": seed_set_inferred,
+                                "param_l2_step": param_l2_step,
+                                "param_schema_changed": param_schema_changed,
+                                "diagnostics_available": available,
+                                "diagnostics_missing": missing,
+                                "source_file": filepath.relative_to(run_path).as_posix(),
+                            })
+                            metrics_data.append(row)
+            except OSError as exc:
+                self.diagnostic("cma_file_read_error", filepath, str(exc))
+                continue
         return metrics_data
 
 class StandardJsonAdapter(RunAdapter):
@@ -367,6 +616,7 @@ class AutoAdapter(RunAdapter):
     """Auto-detecting adapter that combines WandB, CMA, and Standard JSON."""
     
     def __init__(self):
+        super().__init__()
         self.wandb = WandbAdapter()
         self.cma = CMAJsonlAdapter()
         self.std = StandardJsonAdapter()
@@ -378,13 +628,19 @@ class AutoAdapter(RunAdapter):
         return self.std.parse_config(run_path)
 
     def parse_metrics(self, run_path: Path) -> List[Dict[str, Any]]:
+        for adapter in (self.wandb, self.cma, self.std):
+            adapter.diagnostics.clear()
         res = self.wandb.parse_metrics(run_path)
         if res:
+            self.diagnostics.extend(self.wandb.diagnostics)
             return res
         res = self.cma.parse_metrics(run_path)
         if res:
+            self.diagnostics.extend(self.cma.diagnostics)
             return res
-        return self.std.parse_metrics(run_path)
+        res = self.std.parse_metrics(run_path)
+        self.diagnostics.extend(self.wandb.diagnostics + self.cma.diagnostics + self.std.diagnostics)
+        return res
 
 def get_adapter(adapter_name: str) -> RunAdapter:
     adapters = {
@@ -395,18 +651,63 @@ def get_adapter(adapter_name: str) -> RunAdapter:
     }
     return adapters.get(adapter_name.lower(), AutoAdapter())
 
+def _expand_config_value(value: Any, config_dir: Path) -> Any:
+    if isinstance(value, list):
+        return [_expand_config_value(item, config_dir) for item in value]
+    if isinstance(value, dict):
+        return {key: _expand_config_value(item, config_dir) for key, item in value.items()}
+    if not isinstance(value, str):
+        return value
+
+    # Support ${NAME:-relative/default} in addition to the usual $NAME syntax.
+    def replace_default(match: re.Match[str]) -> str:
+        name, default = match.group(1), match.group(2)
+        return os.environ.get(name, default or "")
+
+    expanded = re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}", replace_default, value)
+    expanded = os.path.expanduser(os.path.expandvars(expanded))
+    return expanded
+
+
+def _resolve_config_paths(config: Dict[str, Any], config_dir: Path) -> Dict[str, Any]:
+    path_keys = {"runs_dir", "baselines_file", "ale_baselines_file", "jaxatari_dir", "render_script"}
+    expanded = _expand_config_value(config, config_dir)
+
+    def walk(value: Any) -> Any:
+        if isinstance(value, list):
+            return [walk(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+        result = {}
+        for key, item in value.items():
+            item = walk(item)
+            if key in path_keys and isinstance(item, str) and item:
+                path = Path(item)
+                if not path.is_absolute():
+                    path = config_dir / path
+                item = str(path.resolve(strict=False))
+            result[key] = item
+        return result
+
+    return walk(expanded)
+
+
 def load_config(config_path: Path = Path("config.yaml")) -> Dict[str, Any]:
+    config_path = config_path.resolve(strict=False)
     if not config_path.exists():
-        # Fallback default configuration
-        return {
+        # A portable, empty default is safer than silently reading an author's machine.
+        return _resolve_config_paths({
             "projects": [
                 {
                     "name": "Default Thesis Runs",
-                    "runs_dir": "/Users/kantoz/Research/legps/thesis/runs",
+                    "runs_dir": os.environ.get("THESIS_RUNS_DIR", "../thesis/runs"),
                     "adapter": "auto",
-                    "baselines_file": "/Users/kantoz/Research/legps/thesis/data/baselines.csv"
+                    "baselines_file": os.environ.get("THESIS_BASELINES_FILE", "../thesis/data/baselines.csv")
                 }
             ]
-        }
+        }, config_path.parent)
     with open(config_path, "r") as f:
-        return yaml.safe_load(f)
+        loaded = yaml.safe_load(f) or {}
+    if not isinstance(loaded, dict):
+        raise ValueError(f"Configuration root must be a mapping: {config_path}")
+    return _resolve_config_paths(loaded, config_path.parent)

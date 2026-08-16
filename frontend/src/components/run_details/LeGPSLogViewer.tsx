@@ -6,13 +6,15 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { BrainCircuit } from 'lucide-react';
 import { VideoPlayer } from './VideoPlayer';
+import type { EvaluationRecord } from '../../api';
 
 interface LeGPSLogViewerProps {
   logs: string;
   runId: string;
+  evaluations?: EvaluationRecord[];
 }
 
-const formatLeGPSLogs = (rawLogs: string, currentRunId: string): string => {
+const formatLeGPSLogs = (rawLogs: string, currentRunId: string, evaluations: EvaluationRecord[] = []): string => {
   if (!rawLogs) return rawLogs;
 
   let formatted = rawLogs;
@@ -50,16 +52,20 @@ const formatLeGPSLogs = (rawLogs: string, currentRunId: string): string => {
     }
     
     // Extract evaluated score & seed from this iteration's Evaluation section
-    const realReturnMatch = sec.match(/-\s*\*\*Real Return:\*\*\s*([\d.]+)/i);
-    const worstReturnMatch = sec.match(/-\s*\*\*Robustness \(Min\):\*\*\s*([\d.]+)/i);
+    const realReturnMatch = sec.match(/-\s*\*\*Real Return:\*\*\s*(-?[\d.]+)/i);
+    const worstReturnMatch = sec.match(/-\s*\*\*Robustness \(Min\):\*\*\s*(-?[\d.]+)/i);
     const worstSeedMatch = sec.match(/-\s*\*\*Worst Seed:\*\*\s*(\d+)/i);
-    
-    const analyzedScore = worstReturnMatch ? worstReturnMatch[1] : realReturnMatch ? realReturnMatch[1] : null;
-    const analyzedSeed = worstSeedMatch ? worstSeedMatch[1] : null;
+
+    const evaluation = evaluations.find(row => row.outer_iter === currentIter);
+    const analyzedScore = evaluation?.noisy?.localization_return ?? evaluation?.deterministic_return ??
+      (realReturnMatch ? realReturnMatch[1] : null);
+    const analyzedSeed = evaluation?.noisy?.localization_seed ?? (worstSeedMatch ? worstSeedMatch[1] : null);
+    const minScore = evaluation?.noisy?.min ?? (worstReturnMatch ? worstReturnMatch[1] : null);
+    const minSeed = evaluation?.noisy?.min_return_seed;
 
     let scoreBadge = '';
     if (analyzedScore !== null) {
-      scoreBadge = ` &nbsp;<span style="font-size:0.75rem; font-weight:600; padding:2px 8px; border-radius:6px; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3); color:#fca5a5;">🎯 Analyzed Rollout: Score ${analyzedScore}${analyzedSeed !== null ? ` (Worst Seed ${analyzedSeed})` : ''}</span>`;
+      scoreBadge = ` &nbsp;<span style="font-size:0.75rem; font-weight:600; padding:2px 8px; border-radius:6px; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3); color:#fca5a5;">🎯 Localization trace: seed ${analyzedSeed ?? '—'}, score ${analyzedScore}${minScore !== null ? ` · Numeric minimum: seed ${minSeed ?? '—'}, score ${minScore}` : ''}</span>`;
     }
 
     return sec.replace(
@@ -90,7 +96,7 @@ const formatLeGPSLogs = (rawLogs: string, currentRunId: string): string => {
   return formatted;
 };
 
-export const LeGPSLogViewer: React.FC<LeGPSLogViewerProps> = ({ logs, runId }) => {
+export const LeGPSLogViewer: React.FC<LeGPSLogViewerProps> = ({ logs, runId, evaluations = [] }) => {
   return (
     <div className="panel flex flex-col">
       <div className="flex items-center justify-between mb-4">
@@ -118,7 +124,7 @@ export const LeGPSLogViewer: React.FC<LeGPSLogViewerProps> = ({ logs, runId }) =
             pre({ children }: any) {
               return <div className="my-4">{children}</div>;
             },
-            code({ node, inline, className, children, ...props }: any) {
+            code({ inline, className, children, ...props }: any) {
               const match = /language-(\w+)/.exec(className || '');
               return !inline && match ? (
                 <SyntaxHighlighter
@@ -146,7 +152,7 @@ export const LeGPSLogViewer: React.FC<LeGPSLogViewerProps> = ({ logs, runId }) =
             }
           }}
         >
-          {formatLeGPSLogs(logs, runId)}
+          {formatLeGPSLogs(logs, runId, evaluations)}
         </ReactMarkdown>
       </div>
     </div>

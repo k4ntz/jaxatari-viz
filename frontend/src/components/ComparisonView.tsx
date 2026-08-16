@@ -52,11 +52,19 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
       }
     }).catch(e => console.error("Config fetch error:", e));
 
-    fetchComparisonSummary().then((items: any[]) => {
+    let active = true;
+    const refreshSummary = () => fetchComparisonSummary(true).then((items: any[]) => {
+      if (!active) return;
       const sMap: Record<string, any> = {};
       items.forEach((item: any) => { sMap[item.id] = item; });
       setSummaryMap(sMap);
     }).catch(e => console.error("Summary fetch error:", e));
+    refreshSummary();
+    const timer = window.setInterval(refreshSummary, 5_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -210,7 +218,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
       try {
         const baselines = await fetchBaselines();
         const bMap: Record<string, BaselineInfo> = {};
-        baselines.forEach(b => { bMap[b.game] = b; });
+        baselines.forEach(b => { bMap[b.game.toLowerCase()] = b; });
         setBaselinesMap(bMap);
       } catch(e) {
         console.error("Failed to fetch baselines");
@@ -391,8 +399,8 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
       
       for (let i = 0; i < runData.length; i++) {
         const item = runData[i];
-        const stepVal = item.gen ?? item.global_step ?? item.step ?? item._step ?? item.iteration;
-        const metricVal = item[metricKey] ?? (metricKey === 'ret_mean' ? (item['charts/episodic_return'] ?? item['charts/episodic_game_return'] ?? item['eval/episodic_return_mod'] ?? item['episodic_return'] ?? item['reward']) : (metricKey === 'best_fitness' ? (item['ret_mean'] ?? item['charts/episodic_return'] ?? item['charts/episodic_game_return'] ?? item['losses/loss']) : undefined));
+        const stepVal = item.global_gen ?? item.global_step ?? item.step ?? item._step ?? item.iteration ?? item.gen;
+        const metricVal = item[metricKey];
         
         if (stepVal !== undefined && metricVal !== undefined) {
           x.push(stepVal);
@@ -421,15 +429,30 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
     return traces;
   };
 
-  const getHNS = (game: string, rawScore: number) => {
-    let bGame = game;
+  const getHNS = (game: string, rawScore: number): number | null => {
+    let bGame = game.toLowerCase();
     if (bGame === 'montezuma') bGame = 'montezuma_revenge';
     const b = baselinesMap[bGame];
-    if (!b) return rawScore; // Fallback to raw if baselines missing for game
+    if (!b) return null;
     const h = b.human;
     const r = b.random;
-    if (h === r) return 0; // Avoid divide by zero
+    if (h === r) return null;
     return (rawScore - r) / (h - r);
+  };
+  const hasBaseline = (game: string) => {
+    const normalized = game.toLowerCase();
+    const key = normalized === 'montezuma' ? 'montezuma_revenge' : normalized;
+    const baseline = baselinesMap[key];
+    return Boolean(baseline && baseline.human !== baseline.random);
+  };
+
+  const getRunComparisonScore = (runId: string): number | null => {
+    const summaryScore = summaryMap[runId]?.comparison_score;
+    if (typeof summaryScore === 'number' && Number.isFinite(summaryScore)) return summaryScore;
+    // Compatibility for non-v2 servers: use the final exact ret_mean value, never the
+    // maximum training observation and never a value from a differently named metric.
+    const exact = (metricsData[runId] || []).filter(row => typeof row.ret_mean === 'number');
+    return exact.length ? exact[exact.length - 1].ret_mean : null;
   };
   const formatLabelWithBreak = (str: string) => {
     if (!str) return str;
@@ -461,22 +484,8 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
 
       const groupName = formatLabelWithBreak(rawGroupName);
       
-      const runData = metricsData[runId] || [];
-      
-      let maxScore = -Infinity;
-      if (runData.length > 0) {
-        for (let i = 0; i < runData.length; i++) {
-          const item = runData[i];
-          const scoreVal = item.ret_mean ?? item['charts/episodic_return'] ?? item['charts/episodic_game_return'] ?? item['eval/episodic_return_mod'] ?? item['episodic_return'] ?? item['reward'];
-          if (scoreVal !== undefined) {
-            maxScore = Math.max(maxScore, scoreVal);
-          }
-        }
-      } else if (summaryMap[runId]?.max_ret_mean !== undefined && summaryMap[runId]?.max_ret_mean !== null) {
-        maxScore = summaryMap[runId].max_ret_mean;
-      }
-      
-      if (maxScore !== -Infinity) {
+      const comparisonScore = getRunComparisonScore(runId);
+      if (comparisonScore !== null) {
         if (!traces[groupName]) {
           traces[groupName] = {
             y: [],
@@ -485,7 +494,8 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
             marker: { color: '' }
           };
         }
-        traces[groupName].y.push(getHNS(game, maxScore));
+        const normalized = getHNS(game, comparisonScore);
+        traces[groupName].y.push(normalized ?? comparisonScore);
       }
     });
     
@@ -504,9 +514,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
   };
 
   const generateAggregateBoxPlotData = (applyFilter: boolean, obsTypeFilter?: 'pixels' | 'oc') => {
-    const groupGameMax: Record<string, Record<string, number>> = {};
-    const dqnPoints: number[] = [];
-    const ppoPoints: number[] = [];
+    const groupSamples: Record<string, number[]> = {};
     
     const games = Object.keys(runsByGame);
 
@@ -537,50 +545,22 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
 
         const groupName = formatLabelWithBreak(rawGroupName);
         
-        const runData = metricsData[runId] || [];
-        
-        let maxScore = -Infinity;
-        if (runData.length > 0) {
-          for (let i = 0; i < runData.length; i++) {
-            const item = runData[i];
-            const scoreVal = item.ret_mean ?? item['charts/episodic_return'] ?? item['charts/episodic_game_return'] ?? item['eval/episodic_return_mod'] ?? item['episodic_return'] ?? item['reward'];
-            if (scoreVal !== undefined) {
-              maxScore = Math.max(maxScore, scoreVal);
-            }
-          }
-        } else if (summaryMap[runId]?.max_ret_mean !== undefined && summaryMap[runId]?.max_ret_mean !== null) {
-          maxScore = summaryMap[runId].max_ret_mean;
-        }
-        
-        if (maxScore !== -Infinity) {
-          let bGame = game;
-          if (bGame === 'montezuma') bGame = 'montezuma_revenge';
-          if (!baselinesMap[bGame]) return; // Skip if no baseline (avoids mixing raw scores with HNS)
-          
-          const hns = getHNS(game, maxScore);
-          if (!groupGameMax[groupName]) groupGameMax[groupName] = {};
-          if (groupGameMax[groupName][game] === undefined) {
-             groupGameMax[groupName][game] = hns;
-          } else {
-             groupGameMax[groupName][game] = Math.max(groupGameMax[groupName][game], hns);
-          }
+        const comparisonScore = getRunComparisonScore(runId);
+        const hns = comparisonScore === null ? null : getHNS(game, comparisonScore);
+        if (hns !== null) {
+          if (!groupSamples[groupName]) groupSamples[groupName] = [];
+          // Keep every independent run/seed. Taking the best run per game erased
+          // seed variance and biased the aggregate upward.
+          groupSamples[groupName].push(hns);
         }
       });
-      
-      let bGame = game;
-      if (bGame === 'montezuma') bGame = 'montezuma_revenge';
-      const b = baselinesMap[bGame];
-      if (b) {
-        dqnPoints.push(getHNS(game, b.dqn));
-        ppoPoints.push(getHNS(game, b.ppo));
-      }
     });
 
     const traces: any[] = [];
     
-    Object.keys(groupGameMax).forEach((groupName) => {
+    Object.keys(groupSamples).forEach((groupName) => {
       traces.push({
-        y: Object.values(groupGameMax[groupName]),
+        y: groupSamples[groupName],
         type: 'box',
         name: groupName,
         marker: { color: getAlgorithmColor(groupName) }
@@ -600,6 +580,8 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
 
     return traces;
   };
+
+  const aggregateMissingBaselines = Object.keys(runsByGame).filter(game => !hasBaseline(game));
 
   const isDark = theme === 'dark';
   const layoutBase = {
@@ -959,6 +941,11 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
               </div>
               <h2 className="text-2xl font-bold text-white">All Games Aggregate Performance</h2>
             </div>
+            {aggregateMissingBaselines.length > 0 && (
+              <div className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                Excluded from normalized aggregate because no human/random baseline is available: {aggregateMissingBaselines.join(', ')}. Raw and normalized scores are never mixed.
+              </div>
+            )}
 
             {compareTab === 'vs_ale' ? (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1055,6 +1042,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
             generateBoxPlotData={generateBoxPlotData} 
             layoutBase={layoutBase} 
             compareTab={compareTab}
+            scoreAxisLabel={hasBaseline(game) ? 'Human-normalized score' : 'Raw environment return (baseline unavailable)'}
           />
         ))}
       </div>
@@ -1062,7 +1050,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
   );
 };
 
-const GameSection = React.memo(({ game, gameRuns, runInfos, metricsData, setMetricsData, generatePlotData, generateBoxPlotData, layoutBase, compareTab }: any) => {
+const GameSection = React.memo(({ game, gameRuns, runInfos, metricsData, setMetricsData, generatePlotData, generateBoxPlotData, layoutBase, compareTab, scoreAxisLabel }: any) => {
   const [expanded, setExpanded] = useState(false);
   const [loadingGameMetrics, setLoadingGameMetrics] = useState(false);
   const [filterOutliers, setFilterOutliers] = useState<boolean>(() => {
@@ -1096,17 +1084,19 @@ const GameSection = React.memo(({ game, gameRuns, runInfos, metricsData, setMetr
 
   useEffect(() => {
     if (!expanded) return;
-    const missing = gameRuns.filter((id: string) => !metricsData[id]);
-    if (missing.length === 0) return;
-
-    setLoadingGameMetrics(true);
-    Promise.all(
-      missing.map((runId: string) =>
-        fetchRunMetrics(runId)
+    let active = true;
+    const loadMetrics = (forceRefresh: boolean) => {
+      const targets = forceRefresh ? gameRuns : gameRuns.filter((id: string) => !metricsData[id]);
+      if (targets.length === 0) return Promise.resolve();
+      setLoadingGameMetrics(true);
+      return Promise.all(
+        targets.map((runId: string) =>
+        fetchRunMetrics(runId, forceRefresh)
           .then(data => ({ runId, data }))
           .catch(() => ({ runId, data: [] }))
       )
     ).then(results => {
+      if (!active) return;
       setMetricsData((prev: any) => {
         const next = { ...prev };
         results.forEach(res => { next[res.runId] = res.data; });
@@ -1114,6 +1104,13 @@ const GameSection = React.memo(({ game, gameRuns, runInfos, metricsData, setMetr
       });
       setLoadingGameMetrics(false);
     });
+    };
+    loadMetrics(false);
+    const timer = window.setInterval(() => { loadMetrics(true); }, 5_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
   }, [expanded, gameRuns, metricsData, setMetricsData]);
 
   return (
@@ -1156,7 +1153,7 @@ const GameSection = React.memo(({ game, gameRuns, runInfos, metricsData, setMetr
               {pixelRuns.length > 0 ? (
                 <Plot
                   data={generateBoxPlotData(pixelRuns, game, filterOutliers) as any}
-                  layout={{ ...layoutBase, yaxis: { ...layoutBase.yaxis, title: { text: 'Normalized Score', font: { color: '#64748b' } } } }}
+                  layout={{ ...layoutBase, yaxis: { ...layoutBase.yaxis, title: { text: scoreAxisLabel, font: { color: '#64748b' } } } }}
                   useResizeHandler={true}
                   style={{ width: '100%', height: '380px' }}
                   config={{ responsive: true, displayModeBar: false }}
@@ -1188,7 +1185,7 @@ const GameSection = React.memo(({ game, gameRuns, runInfos, metricsData, setMetr
               {ocRuns.length > 0 ? (
                 <Plot
                   data={generateBoxPlotData(ocRuns, game, filterOutliers) as any}
-                  layout={{ ...layoutBase, yaxis: { ...layoutBase.yaxis, title: { text: 'Normalized Score', font: { color: '#64748b' } } } }}
+                  layout={{ ...layoutBase, yaxis: { ...layoutBase.yaxis, title: { text: scoreAxisLabel, font: { color: '#64748b' } } } }}
                   useResizeHandler={true}
                   style={{ width: '100%', height: '380px' }}
                   config={{ responsive: true, displayModeBar: false }}
@@ -1204,7 +1201,7 @@ const GameSection = React.memo(({ game, gameRuns, runInfos, metricsData, setMetr
       ) : (
         <div className="panel flex flex-col group">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-base font-semibold text-white tracking-wide">Human Normalized Score Distribution</h3>
+            <h3 className="text-base font-semibold text-white tracking-wide">{scoreAxisLabel} distribution</h3>
             <div className="flex items-center gap-4">
               <label className="flex items-center gap-3 cursor-pointer group/toggle">
                 <span className={`text-sm font-medium transition-colors ${filterOutliers ? 'text-indigo-300' : 'text-slate-400'}`}>Filter Outliers</span>
@@ -1219,7 +1216,7 @@ const GameSection = React.memo(({ game, gameRuns, runInfos, metricsData, setMetr
           <div className="w-full">
             <Plot
               data={generateBoxPlotData(gameRuns, game, filterOutliers) as any}
-              layout={{ ...layoutBase, yaxis: { ...layoutBase.yaxis, title: { text: 'Normalized Score', font: { color: '#64748b' } } } }}
+              layout={{ ...layoutBase, yaxis: { ...layoutBase.yaxis, title: { text: scoreAxisLabel, font: { color: '#64748b' } } } }}
               useResizeHandler={true}
               style={{ width: '100%', height: '400px' }}
               config={{ responsive: true, displayModeBar: false }}
