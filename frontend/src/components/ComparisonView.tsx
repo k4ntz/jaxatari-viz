@@ -399,7 +399,10 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
       
       for (let i = 0; i < runData.length; i++) {
         const item = runData[i];
-        const stepVal = item.global_gen ?? item.global_step ?? item.step ?? item._step ?? item.iteration ?? item.gen;
+        // Never compare a CMA generation directly with an RL environment step.
+        // Current LeGPS2 records expose cumulative optimizer interactions;
+        // historical records without an interaction axis are omitted here.
+        const stepVal = item.cumulative_optimizer_primary_env_steps ?? item.global_step ?? item.step ?? item._step;
         const metricVal = item[metricKey];
         
         if (stepVal !== undefined && metricVal !== undefined) {
@@ -1237,7 +1240,7 @@ const GameSection = React.memo(({ game, gameRuns, runInfos, metricsData, setMetr
               <div className="w-full">
                 <Plot
                   data={generatePlotData(gameRuns, game, 'best_fitness') as any}
-                  layout={{ ...layoutBase, xaxis: { ...layoutBase.xaxis, title: { text: 'Generation', font: { color: '#64748b' } } }, yaxis: { ...layoutBase.yaxis, title: { text: 'Fitness', font: { color: '#64748b' } } } }}
+                  layout={{ ...layoutBase, xaxis: { ...layoutBase.xaxis, title: { text: 'Primary Environment Steps', font: { color: '#64748b' } } }, yaxis: { ...layoutBase.yaxis, title: { text: 'Fitness', font: { color: '#64748b' } } } }}
                   useResizeHandler={true}
                   style={{ width: '100%', height: '350px' }}
                   config={{ responsive: true, displayModeBar: false }}
@@ -1253,7 +1256,7 @@ const GameSection = React.memo(({ game, gameRuns, runInfos, metricsData, setMetr
               <div className="w-full">
                 <Plot
                   data={generatePlotData(gameRuns, game, 'ret_mean', 'lines') as any}
-                  layout={{ ...layoutBase, xaxis: { ...layoutBase.xaxis, title: { text: 'Generation', font: { color: '#64748b' } } }, yaxis: { ...layoutBase.yaxis, title: { text: 'Score', font: { color: '#64748b' } } } }}
+                  layout={{ ...layoutBase, xaxis: { ...layoutBase.xaxis, title: { text: 'Primary Environment Steps', font: { color: '#64748b' } } }, yaxis: { ...layoutBase.yaxis, title: { text: 'Score', font: { color: '#64748b' } } } }}
                   useResizeHandler={true}
                   style={{ width: '100%', height: '350px' }}
                   config={{ responsive: true, displayModeBar: false }}
@@ -1269,7 +1272,7 @@ const GameSection = React.memo(({ game, gameRuns, runInfos, metricsData, setMetr
               <div className="w-full">
                 <Plot
                   data={generatePlotData(gameRuns, game, 'min_y_best') as any}
-                  layout={{ ...layoutBase, xaxis: { ...layoutBase.xaxis, title: { text: 'Generation', font: { color: '#64748b' } } }, yaxis: { ...layoutBase.yaxis, autorange: 'reversed' } }}
+                  layout={{ ...layoutBase, xaxis: { ...layoutBase.xaxis, title: { text: 'Primary Environment Steps', font: { color: '#64748b' } } }, yaxis: { ...layoutBase.yaxis, autorange: 'reversed' } }}
                   useResizeHandler={true}
                   style={{ width: '100%', height: '350px' }}
                   config={{ responsive: true, displayModeBar: false }}

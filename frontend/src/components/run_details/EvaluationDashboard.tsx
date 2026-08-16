@@ -15,17 +15,25 @@ export const EvaluationDashboard: React.FC<EvaluationDashboardProps> = ({ runId,
   const sorted = useMemo(() => [...evaluations].sort((a, b) => a.outer_iter - b.outer_iter), [evaluations]);
   const defaultIteration = sorted.find(row => row.is_final_champion)?.outer_iter ?? sorted.at(-1)?.outer_iter ?? 0;
   const [selectedIteration, setSelectedIteration] = useState(defaultIteration);
+  const useInteractionAxis = sorted.length > 0 && sorted.every(row =>
+    typeof row.optimizer_interactions?.cumulative_primary_env_steps === 'number' &&
+    Number.isFinite(row.optimizer_interactions.cumulative_primary_env_steps)
+  );
+  const xValue = (row: EvaluationRecord) => useInteractionAxis
+    ? row.optimizer_interactions!.cumulative_primary_env_steps!
+    : row.outer_iter;
 
   if (!sorted.length) return null;
 
   const series = (name: string, selector: (row: EvaluationRecord) => number | undefined, color: string, dash = 'solid') => {
     const rows = sorted.filter(row => finite(selector(row)));
     return {
-      x: rows.map(row => row.outer_iter), y: rows.map(selector), name,
+      x: rows.map(xValue), y: rows.map(selector), name,
       type: 'scatter', mode: 'lines+markers', line: { color, dash, width: 2 },
       marker: { size: 7, color },
-      customdata: rows.map(row => [row.outer_accepted, row.is_final_champion]),
-      hovertemplate: 'outer iter %{x}<br>score %{y}<br>accepted %{customdata[0]}<br>final champion %{customdata[1]}<extra></extra>',
+      customdata: rows.map(row => [row.outer_iter, row.outer_accepted, row.is_final_champion,
+        row.completion?.trace_label || 'completion unavailable']),
+      hovertemplate: `${useInteractionAxis ? 'optimizer env steps %{x}' : 'outer iter %{x}'}<br>outer iter %{customdata[0]}<br>score %{y}<br>accepted %{customdata[1]}<br>final champion %{customdata[2]}<br>%{customdata[3]}<extra></extra>`,
     };
   };
 
@@ -60,7 +68,10 @@ export const EvaluationDashboard: React.FC<EvaluationDashboardProps> = ({ runId,
             height: 288, paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
             margin: { t: 10, r: 10, l: 55, b: 40 },
             font: { color: '#94a3b8', family: 'Inter' },
-            xaxis: { title: { text: 'Outer iteration' }, dtick: 1, gridcolor: 'rgba(255,255,255,0.05)' },
+            xaxis: { title: { text: useInteractionAxis
+              ? 'Cumulative optimizer primary environment steps'
+              : 'Outer iteration (interaction counts unavailable)' },
+              ...(useInteractionAxis ? {} : { dtick: 1 }), gridcolor: 'rgba(255,255,255,0.05)' },
             yaxis: { title: { text: 'Environment return' }, gridcolor: 'rgba(255,255,255,0.05)', zeroline: true },
             legend: { orientation: 'h', y: -0.25 }, hovermode: 'closest',
           }}
@@ -73,7 +84,7 @@ export const EvaluationDashboard: React.FC<EvaluationDashboardProps> = ({ runId,
         <table className="w-full text-xs text-slate-300">
           <thead className="text-[10px] uppercase tracking-wider text-slate-500">
             <tr>
-              {['iter', 'accepted', 'noisy mean ± std', 'min-return episode', 'localization trace', 'clean mean / min', 'sticky mean ± std', 'per-seed noisy returns'].map(label => (
+              {['iter', 'accepted', 'noisy mean ± std', 'min-return episode', 'localization trace', 'completion', 'clean mean / min', 'sticky mean ± std', 'per-seed noisy returns'].map(label => (
                 <th key={label} className="text-left px-2 py-2">{label}</th>
               ))}
             </tr>
@@ -82,6 +93,10 @@ export const EvaluationDashboard: React.FC<EvaluationDashboardProps> = ({ runId,
             {sorted.map(row => {
               const seedsDiffer = row.noisy?.min_return_seed !== undefined && row.noisy?.localization_seed !== undefined &&
                 row.noisy.min_return_seed !== row.noisy.localization_seed;
+              const scorePair = row.pong_score?.player !== undefined && row.pong_score?.enemy !== undefined
+                ? `${row.pong_score.player}–${row.pong_score.enemy}` : null;
+              const completionLabel = row.completion?.trace_label || 'completion unavailable';
+              const completionSource = row.completion?.trace_source || 'unavailable';
               return (
                 <tr key={row.outer_iter} className={`border-t border-[#252b40] ${row.outer_iter === selectedIteration ? 'bg-indigo-500/5' : ''}`}>
                   <td className="px-2 py-2 font-mono">{row.outer_iter}{row.is_final_champion ? ' ★' : ''}</td>
@@ -93,7 +108,14 @@ export const EvaluationDashboard: React.FC<EvaluationDashboardProps> = ({ runId,
                   <td className="px-2 py-2 font-mono">seed {row.noisy?.min_return_seed ?? '—'} / {row.noisy?.min ?? '—'}</td>
                   <td className={`px-2 py-2 font-mono ${seedsDiffer ? 'text-amber-300' : ''}`} title="Selected by lexicographic progress, then return">
                     seed {row.noisy?.localization_seed ?? '—'} / {row.noisy?.localization_return ?? row.deterministic_return ?? '—'}
+                    {scorePair && <span className="block text-[10px] text-slate-500">score {scorePair}</span>}
                     {seedsDiffer && <ShieldAlert className="inline w-3.5 h-3.5 ml-1" />}
+                  </td>
+                  <td className={`px-2 py-2 ${row.completion?.trace_truncated ? 'text-amber-300' : row.completion?.trace_terminated ? 'text-emerald-300' : 'text-slate-500'}`}
+                      title={`source: ${completionSource}`}>
+                    {completionLabel}
+                    {row.trajectory?.decision_count !== undefined &&
+                      <span className="block font-mono text-[10px] text-slate-500">{row.trajectory.decision_count} decisions</span>}
                   </td>
                   <td className="px-2 py-2 font-mono">{row.clean?.mean ?? '—'} / {row.clean?.min ?? '—'}</td>
                   <td className="px-2 py-2 font-mono">{finite(row.sticky?.mean) ? row.sticky.mean.toFixed(1) : '—'} ± {finite(row.sticky?.std) ? row.sticky.std.toFixed(1) : '—'}</td>
@@ -107,6 +129,10 @@ export const EvaluationDashboard: React.FC<EvaluationDashboardProps> = ({ runId,
 
       <div className="text-[11px] text-slate-500">
         “Min-return episode” is the numeric minimum score. “Localization trace” is selected by the pipeline's progress-first lexicographic criterion and can be a different seed.
+        {' '}A horizon-capped score is an incomplete episode, never a win; legacy completion inference is labelled separately.
+        {' '}{useInteractionAxis
+          ? 'Score evolution is plotted against cumulative optimizer primary environment steps.'
+          : 'This legacy run has no interaction timeline, so the plot uses outer iteration.'}
       </div>
 
       <RootConsistencyViewer runId={runId} iteration={selectedIteration} />

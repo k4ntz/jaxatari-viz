@@ -260,7 +260,10 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
       if (!methodSteps[method]) methodSteps[method] = {};
 
       mList.forEach((m: any) => {
-        const step = m.global_gen ?? m.global_step ?? m.step ?? m._step ?? m.iteration ?? m.gen;
+        // Cross-algorithm learning curves must use an interaction axis.  A CMA
+        // generation is not comparable to a DQN environment step, so legacy
+        // LeGPS rows without interaction accounting are intentionally omitted.
+        const step = m.cumulative_optimizer_primary_env_steps ?? m.global_step ?? m.step ?? m._step;
         const ret = m.ret_mean;
         if (step !== undefined && ret !== undefined && ret !== null) {
           if (!methodSteps[method][step]) methodSteps[method][step] = [];
@@ -313,7 +316,7 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
       if (!methodSteps[method]) methodSteps[method] = {};
 
       mList.forEach((m: any) => {
-        const step = m.global_gen ?? m.global_step ?? m.step ?? m._step ?? m.iteration ?? m.gen;
+        const step = m.cumulative_optimizer_primary_env_steps ?? m.global_step ?? m.step ?? m._step;
         const ret = m.ret_mean;
         if (step !== undefined && ret !== undefined && ret !== null) {
           if (!methodSteps[method][step]) methodSteps[method][step] = [];
@@ -607,7 +610,7 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
                 height: 680,
                 margin: { t: 20, r: 20, l: 55, b: 50 },
                 font: { ...layoutBase.font, size: 12 },
-                xaxis: { ...layoutBase.xaxis, title: 'Generations / Steps' },
+                xaxis: { ...layoutBase.xaxis, title: 'Primary Environment Steps' },
                 yaxis: { ...layoutBase.yaxis, title: 'Mean Return / Fitness' }
               }}
               useResizeHandler={true}
@@ -633,7 +636,7 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
                 height: 680,
                 margin: { t: 20, r: 20, l: 55, b: 50 },
                 font: { ...layoutBase.font, size: 12 },
-                xaxis: { ...layoutBase.xaxis, title: 'Generations / Steps' },
+                xaxis: { ...layoutBase.xaxis, title: 'Primary Environment Steps' },
                 yaxis: { ...layoutBase.yaxis, title: 'Mean Return / Fitness' }
               }}
               useResizeHandler={true}

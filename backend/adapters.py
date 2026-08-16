@@ -42,6 +42,8 @@ class RunAdapter:
         metrics_path = run_path / "metrics"
         if not metrics_path.exists():
             return []
+        config = self.parse_config(run_path) or {}
+        game = str(config.get("game", "")).lower()
 
         verdicts = self._parse_outer_verdicts(run_path)
         best_iter = None
@@ -90,6 +92,43 @@ class RunAdapter:
             localization_return = dev.get("robust_worst_return")
             if localization_return is None and localization_seed in seed_values:
                 localization_return = returns[seed_values.index(localization_seed)]
+
+            terminated = dev.get("robust_terminated")
+            truncated = dev.get("robust_truncated")
+            decision_steps = dev.get("robust_decision_steps")
+            terminated = ([bool(value) for value in terminated]
+                          if isinstance(terminated, list) else [])
+            truncated = ([bool(value) for value in truncated]
+                         if isinstance(truncated, list) else [])
+            decision_steps = ([int(value) for value in decision_steps]
+                              if isinstance(decision_steps, list) else [])
+
+            trace_terminated = trace.get("deterministic_terminated")
+            trace_truncated = trace.get("deterministic_truncated")
+            trace_completion_source = "artifact"
+            if trace_terminated is not None:
+                trace_terminated = bool(trace_terminated)
+            if trace_truncated is not None:
+                trace_truncated = bool(trace_truncated)
+            if trace_terminated is None and trace_truncated is None:
+                # A historical Pong trace whose final score is below 21 is provably incomplete:
+                # JAXAtari Pong has no other terminal condition.  Do not call a score lead a win.
+                player_score = trace.get("deterministic_score")
+                enemy_score = trace.get("deterministic_enemy_score")
+                if (game == "pong" and isinstance(player_score, (int, float))
+                        and isinstance(enemy_score, (int, float))
+                        and max(float(player_score), float(enemy_score)) < 21):
+                    trace_terminated, trace_truncated = False, True
+                    trace_completion_source = "legacy_pong_score_inference"
+                else:
+                    trace_completion_source = "unavailable"
+
+            if trace_terminated is True and trace_truncated is not True:
+                trace_completion_label = "complete"
+            elif trace_truncated is True:
+                trace_completion_label = "horizon-capped / incomplete"
+            else:
+                trace_completion_label = "completion unavailable"
 
             accepted = raw.get("accepted") if isinstance(raw.get("accepted"), bool) else verdicts.get(outer_iter)
             if isinstance(raw.get("accepted"), bool):
@@ -147,6 +186,21 @@ class RunAdapter:
                     "probability": sticky_payload.get("sticky_prob"),
                     "seed_count": sticky_payload.get("sticky_seeds"),
                 },
+                "completion": {
+                    "terminated": terminated,
+                    "truncated": truncated,
+                    "decision_steps": decision_steps,
+                    "termination_rate": dev.get("robust_termination_rate"),
+                    "truncation_rate": dev.get("robust_truncation_rate"),
+                    "trace_terminated": trace_terminated,
+                    "trace_truncated": trace_truncated,
+                    "trace_label": trace_completion_label,
+                    "trace_source": trace_completion_source,
+                },
+                "pong_score": {
+                    "player": trace.get("deterministic_score"),
+                    "enemy": trace.get("deterministic_enemy_score"),
+                } if game == "pong" else None,
                 "trajectory": {
                     "legacy_rollout_id": raw.get("rollout_db_local_id", raw.get("rollout_id")),
                     "trajectory_id": raw.get("trajectory_id"),
@@ -299,6 +353,13 @@ class CMAJsonlAdapter(RunAdapter):
                                 "challenger_distance_from_incumbent",
                                 "boundary_parameter_fraction", "boundary_candidate_fraction",
                                 "search_seed_set_id", "monitor_seed_set_id", "incumbent_updated",
+                                "generation_episode_evaluations",
+                                "generation_policy_decisions",
+                                "generation_primary_env_steps",
+                                "cumulative_optimizer_episode_evaluations",
+                                "cumulative_optimizer_policy_decisions",
+                                "cumulative_optimizer_primary_env_steps",
+                                "primary_env_steps_exact",
                             )
                             available = [key for key in diagnostic_fields if row.get(key) is not None]
                             missing = [key for key in diagnostic_fields if row.get(key) is None]

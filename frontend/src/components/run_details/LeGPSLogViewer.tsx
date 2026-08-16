@@ -12,6 +12,7 @@ interface LeGPSLogViewerProps {
   logs: string;
   runId: string;
   evaluations?: EvaluationRecord[];
+  method?: string;
 }
 
 const formatLeGPSLogs = (rawLogs: string, currentRunId: string, evaluations: EvaluationRecord[] = []): string => {
@@ -96,14 +97,16 @@ const formatLeGPSLogs = (rawLogs: string, currentRunId: string, evaluations: Eva
   return formatted;
 };
 
-export const LeGPSLogViewer: React.FC<LeGPSLogViewerProps> = ({ logs, runId, evaluations = [] }) => {
+export const LeGPSLogViewer: React.FC<LeGPSLogViewerProps> = ({
+  logs, runId, evaluations = [], method = 'LeGPS'
+}) => {
   return (
     <div className="panel flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-          <BrainCircuit className="w-4 h-4 text-emerald-400" /> LeGPS Evolution & LLM Localization Trace
+          <BrainCircuit className="w-4 h-4 text-emerald-400" /> {method} Evolution & LLM Localization Trace
         </h2>
-        <span className="badge border-indigo-500/30 text-indigo-400 bg-indigo-500/10">LeGPS Trace</span>
+        <span className="badge border-indigo-500/30 text-indigo-400 bg-indigo-500/10">{method} Trace</span>
       </div>
       <div className="prose prose-invert max-w-none text-sm text-slate-300">
         <ReactMarkdown 

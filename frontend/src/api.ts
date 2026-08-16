@@ -200,6 +200,27 @@ export interface EvaluationRecord {
   };
   clean: { mean?: number; min?: number };
   sticky: { mean?: number; std?: number; probability?: number; seed_count?: number };
+  completion?: {
+    terminated: boolean[];
+    truncated: boolean[];
+    decision_steps: number[];
+    termination_rate?: number;
+    truncation_rate?: number;
+    trace_terminated?: boolean;
+    trace_truncated?: boolean;
+    trace_label: string;
+    trace_source: string;
+  };
+  pong_score?: { player?: number; enemy?: number } | null;
+  optimizer_interactions?: {
+    iteration_episode_evaluations?: number;
+    iteration_policy_decisions?: number;
+    iteration_primary_env_steps?: number;
+    primary_env_steps_exact?: boolean;
+    cumulative_episode_evaluations?: number;
+    cumulative_policy_decisions?: number;
+    cumulative_primary_env_steps?: number;
+  };
   trajectory?: { legacy_rollout_id?: number; decision_count?: number; portable?: boolean };
 }
 

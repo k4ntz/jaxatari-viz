@@ -6,7 +6,9 @@ An extensible, web-based visualization dashboard and experiment tracker for JAXA
 - **Multi-Project Support**: Monitor and compare experiment runs across multiple repository directories from a single unified interface.
 - **Pluggable Adapter System**: Ingest custom metrics (`jsonl`, `json`) and logs seamlessly.
 - **Interactive Plotly Visualizations**: Progress curves, game score benchmarking against PPO/DQN/Human baselines, and logs exploration.
-- **Protocol-aware LeGPS Views**: Direct `iterNN_eval.json` ingestion, noisy/clean/sticky evaluations, per-seed returns, CMA challenger/incumbent diagnostics, and distinct numeric-minimum vs. localization seeds.
+- **Protocol-aware LeGPS/LeGPS2 Views**: Direct `iterNN_eval.json` ingestion, noisy/clean/sticky evaluations, per-seed returns, CMA challenger/incumbent diagnostics, and distinct numeric-minimum vs. localization seeds.
+- **Comparable Interaction Axes**: Current LeGPS2 curves use exact cumulative primary environment steps, so they can be compared with DQN/Rainbow-style learning curves without treating one CMA generation as one frame.
+- **Episode Completion Semantics**: Terminal episodes and horizon-capped episodes are shown separately; a historical Pong trace ending 19–0 is never labelled a completed win or a score of 21−2.
 - **Verified Media**: Content-addressed MP4s are served only when their policy, parameters, config, evaluation, renderer, seed, score, and video hashes match a versioned provenance manifest.
 - **Transition Consistency Hooks**: Portable per-run trajectories can expose pre/post state hashes, proposed/executed actions, and an explicit video-frame/decision mapping.
 - **Dark/Light Theme**: Built with React, Vite, TypeScript, and pure CSS design tokens.
@@ -92,6 +94,8 @@ Open your browser at [http://localhost:5173](http://localhost:5173).
 
 - `/api/runs/{id}/metrics` returns CMA/training rows. Current CMA rows preserve the artifact's exact `global_gen`, `cma_sigma_before/after`, condition number, population/challenger distances, boundary fractions, search/monitor seed-set IDs, and `incumbent_updated` verdict. `challenger_accepted` is a normalized alias for that logged verdict. Only historical rows without a versioned seed protocol may receive a `seed_set_id` marked `seed_set_inferred=true`.
 - `/api/runs/{id}/evaluations` returns normalized report-evaluation rows. `noisy.min_return_seed` is the numeric minimum-return episode; `noisy.localization_seed` is the progress-first lexicographic trace selected by the pipeline. They are intentionally not conflated.
+- Current CMA rows also carry cumulative episode-evaluation, policy-decision, and primary-environment-step counts. Cross-algorithm plots use the environment-step count (or a native RL step field) and omit legacy generation-only records rather than silently mixing units.
+- Evaluation completion comes from explicit termination/truncation fields. For legacy Pong artifacts only, a sub-21 score pair is conservatively inferred to be incomplete and is labelled as a legacy inference.
 - Comparison summaries use the protocol-selected final champion for LeGPS and the final exact `ret_mean` for legacy runs. They never select the maximum training observation. Aggregates retain all runs/seeds.
 - A missing human/random baseline produces a raw-score label on a single-game chart and exclusion with an explicit warning on normalized aggregate charts. Raw and normalized values are never mixed.
 

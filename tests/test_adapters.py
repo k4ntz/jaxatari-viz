@@ -70,6 +70,13 @@ class CMAJsonlAdapterTests(unittest.TestCase):
             "challenger_distance_from_incumbent": 0.19,
             "boundary_parameter_fraction": 0.02,
             "boundary_candidate_fraction": 0.25,
+            "generation_episode_evaluations": 16,
+            "generation_policy_decisions": 800,
+            "generation_primary_env_steps": 1234,
+            "cumulative_optimizer_episode_evaluations": 64,
+            "cumulative_optimizer_policy_decisions": 3200,
+            "cumulative_optimizer_primary_env_steps": 5678,
+            "primary_env_steps_exact": True,
             # Acceptance is an exact logged protocol decision, not re-derived by the viewer.
             "incumbent_updated": False,
         }
@@ -93,7 +100,11 @@ class CMAJsonlAdapterTests(unittest.TestCase):
             "population_coordinate_std_mean", "population_distance_from_incumbent_mean",
             "challenger_distance_from_incumbent", "boundary_parameter_fraction",
             "boundary_candidate_fraction", "search_seed_set_id", "monitor_seed_set_id",
-            "incumbent_updated",
+            "incumbent_updated", "generation_episode_evaluations",
+            "generation_policy_decisions", "generation_primary_env_steps",
+            "cumulative_optimizer_episode_evaluations",
+            "cumulative_optimizer_policy_decisions",
+            "cumulative_optimizer_primary_env_steps", "primary_env_steps_exact",
         ):
             self.assertIn(field, row["diagnostics_available"])
             self.assertNotIn(field, row["diagnostics_missing"])
@@ -130,14 +141,27 @@ class CMAJsonlAdapterTests(unittest.TestCase):
     def test_nested_evaluation_uses_actual_seed_values_and_clean_protocol(self):
         payload = {
             "accepted": False,
+            "optimizer_interactions": {
+                "iteration_primary_env_steps": 1234,
+                "primary_env_steps_exact": True,
+                "cumulative_primary_env_steps": 5678,
+            },
             "candidate_trace": {"deterministic_return": -4.0, "log_rollout_seed": 1201,
-                                "n_frames": 44},
+                                "n_frames": 44, "deterministic_terminated": 0,
+                                "deterministic_truncated": 1,
+                                "deterministic_score": 19,
+                                "deterministic_enemy_score": 0},
             "candidate_dev": {
                 "robust_return_mean": -3.0, "robust_return_min": -9.0,
                 "robust_return_std": 4.5, "robust_returns": [-4.0, -9.0, 4.0],
                 "robust_seed_values": [1201, 1208, 1215],
                 "robust_worst_seed": 1201, "robust_worst_return": -4.0,
                 "robust_worst_climb": -2.0,
+                "robust_terminated": [False, False, True],
+                "robust_truncated": [True, True, False],
+                "robust_decision_steps": [44, 44, 31],
+                "robust_termination_rate": 1 / 3,
+                "robust_truncation_rate": 2 / 3,
             },
             "candidate_clean": {"robust_return_mean": -1.0, "robust_return_min": -6.0},
             "sticky": {"sticky_return_mean": -7.0, "sticky_return_std": 2.0,
@@ -154,9 +178,32 @@ class CMAJsonlAdapterTests(unittest.TestCase):
         self.assertEqual(row["noisy"]["episodes"][1], {"seed": 1208, "return": -9.0})
         self.assertEqual(row["clean"], {"mean": -1.0, "min": -6.0})
         self.assertEqual(row["sticky"]["probability"], 0.25)
+        self.assertEqual(row["completion"]["terminated"], [False, False, True])
+        self.assertEqual(row["completion"]["trace_label"], "horizon-capped / incomplete")
+        self.assertEqual(row["completion"]["trace_source"], "artifact")
+        self.assertEqual(row["pong_score"], {"player": 19, "enemy": 0})
+        self.assertEqual(row["optimizer_interactions"]["cumulative_primary_env_steps"], 5678)
         self.assertFalse(row["outer_accepted"])
         self.assertEqual(row["outer_accepted_source"], "evaluation_json")
         self.assertTrue(row["trajectory"]["portable"])
+
+    def test_legacy_pong_score_below_21_is_never_presented_as_a_win(self):
+        payload = {
+            "deterministic_return": 19.0,
+            "deterministic_score": 19,
+            "deterministic_enemy_score": 0,
+            "robust_returns": [21.0, 19.0],
+            "n_frames": 15000,
+        }
+        (self.run / "metrics" / "iter00_eval.json").write_text(
+            json.dumps(payload), encoding="utf-8")
+
+        row = CMAJsonlAdapter().parse_evaluations(self.run)[0]
+
+        self.assertEqual(row["completion"]["trace_label"], "horizon-capped / incomplete")
+        self.assertEqual(row["completion"]["trace_source"], "legacy_pong_score_inference")
+        self.assertFalse(row["completion"]["trace_terminated"])
+        self.assertTrue(row["completion"]["trace_truncated"])
 
 
 class ConfigTests(unittest.TestCase):

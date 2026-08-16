@@ -17,6 +17,13 @@
         "local_gen": { "type": "integer", "minimum": 0 },
         "global_gen": { "type": "integer", "minimum": 0 },
         "global_gen_source": { "enum": ["artifact", "viewer_fallback"] },
+        "generation_episode_evaluations": { "type": "integer", "minimum": 0 },
+        "generation_policy_decisions": { "type": "integer", "minimum": 0 },
+        "generation_primary_env_steps": { "type": "integer", "minimum": 0 },
+        "cumulative_optimizer_episode_evaluations": { "type": "integer", "minimum": 0 },
+        "cumulative_optimizer_policy_decisions": { "type": "integer", "minimum": 0 },
+        "cumulative_optimizer_primary_env_steps": { "type": "integer", "minimum": 0 },
+        "primary_env_steps_exact": { "type": "boolean" },
         "best_fitness": { "type": "number" },
         "incumbent_fitness": { "type": ["number", "null"] },
         "fitness_delta": { "type": ["number", "null"] },
@@ -58,6 +65,37 @@
         },
         "clean": { "type": "object" },
         "sticky": { "type": "object" },
+        "completion": {
+          "type": "object",
+          "properties": {
+            "terminated": { "type": "array", "items": { "type": "boolean" } },
+            "truncated": { "type": "array", "items": { "type": "boolean" } },
+            "decision_steps": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+            "trace_terminated": { "type": ["boolean", "null"] },
+            "trace_truncated": { "type": ["boolean", "null"] },
+            "trace_label": { "type": "string" },
+            "trace_source": { "type": "string" }
+          }
+        },
+        "optimizer_interactions": {
+          "type": "object",
+          "properties": {
+            "iteration_episode_evaluations": { "type": "integer", "minimum": 0 },
+            "iteration_policy_decisions": { "type": "integer", "minimum": 0 },
+            "iteration_primary_env_steps": { "type": "integer", "minimum": 0 },
+            "primary_env_steps_exact": { "type": "boolean" },
+            "cumulative_episode_evaluations": { "type": "integer", "minimum": 0 },
+            "cumulative_policy_decisions": { "type": "integer", "minimum": 0 },
+            "cumulative_primary_env_steps": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "pong_score": {
+          "type": ["object", "null"],
+          "properties": {
+            "player": { "type": ["number", "null"] },
+            "enemy": { "type": ["number", "null"] }
+          }
+        },
         "trajectory": { "type": "object" }
       }
     }

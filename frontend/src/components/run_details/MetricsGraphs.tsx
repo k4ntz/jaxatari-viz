@@ -12,6 +12,16 @@ export const MetricsGraphs: React.FC<MetricsGraphsProps> = ({ metrics }) => {
   if (!metrics || metrics.length === 0) return null;
 
   const isCma = metrics.some(m => m.record_type === 'cma_generation');
+  const useInteractionAxis = isCma && metrics.length > 0 && metrics.every(
+    m => typeof m.cumulative_optimizer_primary_env_steps === 'number' &&
+      Number.isFinite(m.cumulative_optimizer_primary_env_steps)
+  );
+  const xValue = (m: any) => useInteractionAxis
+    ? m.cumulative_optimizer_primary_env_steps
+    : (m.global_gen ?? m.global_step ?? m.step ?? m._step ?? m.iteration ?? m.gen);
+  const xAxisTitle = useInteractionAxis
+    ? 'Cumulative optimizer primary environment steps'
+    : (isCma ? 'Global generation (interaction counts unavailable)' : 'Step');
   const inferredSeedSets = isCma && metrics.some(m => m.seed_set_inferred);
   const missingCmaDiagnostics = isCma
     ? Array.from(new Set(metrics.flatMap(m => Array.isArray(m.diagnostics_missing) ? m.diagnostics_missing : [])))
@@ -22,7 +32,7 @@ export const MetricsGraphs: React.FC<MetricsGraphsProps> = ({ metrics }) => {
     const y: number[] = [];
     const customdata: any[] = [];
     metrics.forEach(m => {
-      const stepVal = m.global_gen ?? m.global_step ?? m.step ?? m._step ?? m.iteration ?? m.gen;
+      const stepVal = xValue(m);
       // A missing metric stays missing. Substituting episodic return/loss here silently
       // mixed units in a single trace and made scientific comparisons invalid.
       const metricVal = m[metric];
@@ -51,7 +61,7 @@ export const MetricsGraphs: React.FC<MetricsGraphsProps> = ({ metrics }) => {
       fill: 'none', fillcolor: fillColor,
       customdata,
       hovertemplate: isCma
-        ? 'global gen %{x}<br>value %{y}<br>outer iter %{customdata[0]} / local gen %{customdata[1]}<br>search seed set %{customdata[2]}<br>monitor seed set %{customdata[3]}<br>incumbent updated %{customdata[4]}<extra></extra>'
+        ? `${useInteractionAxis ? 'optimizer env steps' : 'global gen'} %{x}<br>value %{y}<br>outer iter %{customdata[0]} / local gen %{customdata[1]}<br>search seed set %{customdata[2]}<br>monitor seed set %{customdata[3]}<br>incumbent updated %{customdata[4]}<extra></extra>`
         : undefined,
     }];
   };
@@ -60,8 +70,9 @@ export const MetricsGraphs: React.FC<MetricsGraphsProps> = ({ metrics }) => {
     if (!isCma) return { shapes: [], annotations: [] };
     const groups = new Map<number, number[]>();
     metrics.forEach(m => {
-      if (typeof m.outer_iter !== 'number' || typeof m.global_gen !== 'number') return;
-      groups.set(m.outer_iter, [...(groups.get(m.outer_iter) || []), m.global_gen]);
+      const x = xValue(m);
+      if (typeof m.outer_iter !== 'number' || typeof x !== 'number') return;
+      groups.set(m.outer_iter, [...(groups.get(m.outer_iter) || []), x]);
     });
     const entries = Array.from(groups.entries()).sort((a, b) => a[0] - b[0]);
     return {
@@ -82,6 +93,9 @@ export const MetricsGraphs: React.FC<MetricsGraphsProps> = ({ metrics }) => {
   // Identify all available numeric metric keys (ignoring step/index/internal keys)
   const ignoreKeys = new Set([
     'gen', 'local_gen', 'global_gen', 'outer_iter', 'iteration', 'iter', 'step', 'global_step', '_step',
+    'generation_episode_evaluations', 'generation_policy_decisions', 'generation_primary_env_steps',
+    'cumulative_optimizer_episode_evaluations', 'cumulative_optimizer_policy_decisions',
+    'cumulative_optimizer_primary_env_steps', 'primary_env_steps_exact',
     '_timestamp', '_runtime', 'Unnamed: 0', 'ret_mean', 'best_fitness', 'challenger_fitness',
     'schema_version', 'record_type', 'source_file', 'seed_set', 'seed_set_id', 'seed_set_inferred',
     'search_seeds', 'monitor_seeds', 'search_seed_set_id', 'monitor_seed_set_id',
@@ -147,6 +161,9 @@ export const MetricsGraphs: React.FC<MetricsGraphsProps> = ({ metrics }) => {
       {isCma && (
         <div className="text-[11px] text-slate-400 bg-[#0d101d] border border-[#2e334d] rounded-lg p-2">
           Green challenger markers beat the incumbent on the same seed set; red markers did not.
+          {useInteractionAxis
+            ? ' The x-axis is exact cumulative optimizer primary environment steps.'
+            : ' Interaction counts are unavailable, so the x-axis falls back to global generation.'}
           {inferredSeedSets && ' Seed-set IDs are protocol-inferred because historical JSONL rows did not store seeds.'}
           {missingCmaDiagnostics.length > 0 && ` Not logged historically: ${missingCmaDiagnostics.join(', ')}.`}
         </div>
@@ -171,7 +188,7 @@ export const MetricsGraphs: React.FC<MetricsGraphsProps> = ({ metrics }) => {
                   plot_bgcolor: 'transparent',
                   margin: { t: 10, r: 10, l: 40, b: 30 },
                   font: { color: '#94a3b8', family: 'Inter' },
-                  xaxis: { title: { text: isCma ? 'Global generation' : 'Step' }, gridcolor: 'rgba(255,255,255,0.05)', tickfont: { color: '#64748b' } },
+                  xaxis: { title: { text: xAxisTitle }, gridcolor: 'rgba(255,255,255,0.05)', tickfont: { color: '#64748b' } },
                   yaxis: { gridcolor: 'rgba(255,255,255,0.05)', tickfont: { color: '#64748b' } },
                   hovermode: 'closest',
                   shapes: cmaFacetDecorations.shapes,
@@ -225,7 +242,7 @@ export const MetricsGraphs: React.FC<MetricsGraphsProps> = ({ metrics }) => {
                         plot_bgcolor: 'transparent',
                         margin: { t: 10, r: 10, l: 40, b: 30 },
                         font: { color: '#94a3b8', family: 'Inter' },
-                        xaxis: { title: { text: isCma ? 'Global generation' : 'Step' }, gridcolor: 'rgba(255,255,255,0.05)', tickfont: { color: '#64748b' } },
+                        xaxis: { title: { text: xAxisTitle }, gridcolor: 'rgba(255,255,255,0.05)', tickfont: { color: '#64748b' } },
                         yaxis: { gridcolor: 'rgba(255,255,255,0.05)', tickfont: { color: '#64748b' } },
                         hovermode: 'closest',
                         shapes: cmaFacetDecorations.shapes,

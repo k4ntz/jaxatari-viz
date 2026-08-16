@@ -8,6 +8,7 @@ import { EvaluationDashboard } from './EvaluationDashboard';
 
 export const LeGPSRunDetails: React.FC<RunDetailProps> = ({ runInfo, metrics, logs, evaluations = [] }) => {
   const [showConfig, setShowConfig] = useState(false);
+  const method = String(runInfo.config.method || 'LeGPS');
 
   return (
     <div className="p-8 flex flex-col h-full overflow-y-auto custom-scrollbar relative">
@@ -27,7 +28,7 @@ export const LeGPSRunDetails: React.FC<RunDetailProps> = ({ runInfo, metrics, lo
             </div>
             <div>
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                LeGPS Evolutionary Run
+                {method} Evolutionary Run
                 <span className="badge text-[10px] bg-indigo-500/10 border border-indigo-500/30 text-indigo-300">
                   CMA-ES + LLM
                 </span>
@@ -59,7 +60,7 @@ export const LeGPSRunDetails: React.FC<RunDetailProps> = ({ runInfo, metrics, lo
         <EvaluationDashboard runId={runInfo.id} evaluations={evaluations} />
 
         {/* LeGPS Rich Interactive Markdown Logs & Iteration Rollout Video Players */}
-        <LeGPSLogViewer logs={logs} runId={runInfo.id} evaluations={evaluations} />
+        <LeGPSLogViewer logs={logs} runId={runInfo.id} evaluations={evaluations} method={method} />
       </div>
     </div>
   );
