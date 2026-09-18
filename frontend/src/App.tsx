@@ -1,9 +1,8 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import ComparisonView from './components/ComparisonView';
 import RunDetails from './components/RunDetails';
-import LogsExplorer from './components/LogsExplorer';
 import EnvironmentsView from './components/EnvironmentsView';
 import EnvironmentDetails from './components/EnvironmentDetails';
 import GameVerificationView from './components/GameVerificationView';
@@ -38,7 +37,7 @@ function App() {
   const toggleTheme = () => setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
 
   return (
-    <BrowserRouter>
+    <HashRouter>
       <div className="flex h-full w-full bg-[#0f111a] text-[#f8fafc]">
         {/* Sidebar */}
         <Sidebar theme={theme} toggleTheme={toggleTheme} />
@@ -105,14 +104,10 @@ function App() {
             />
             <Route path="/environment/:envId/verif" element={<GameVerificationView theme={theme} />} />
             <Route path="/run/:runId" element={<RunDetails />} />
-            <Route
-              path="/logs"
-              element={<LogsExplorer selectedRuns={selectedRuns} setSelectedRuns={setSelectedRuns} />}
-            />
           </Routes>
         </main>
       </div>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 

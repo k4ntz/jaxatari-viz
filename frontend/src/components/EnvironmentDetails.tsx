@@ -33,7 +33,6 @@ interface EnvironmentDetailsProps {
 const LOCAL_STORAGE_FILTER_KEY = 'jaxatari_env_details_filters';
 
 const FIXED_ALGO_COLORS: Record<string, string> = {
-  'legps': '#818cf8',        // Indigo
   'ppo': '#34d399',          // Emerald
   'ppo baseline': '#8b5cf6', // Violet
   'dqn': '#38bdf8',          // Sky Blue
@@ -451,9 +450,9 @@ export const EnvironmentDetails: React.FC<EnvironmentDetailsProps> = ({
           {/* GIF Preview */}
           <div className="bg-[#16192b] border border-[#2e334d] p-2.5 rounded-xl shadow-lg flex flex-col items-center">
             <div className="w-full h-44 bg-[#0f111a] border border-[#2e334d] rounded-lg overflow-hidden flex items-center justify-center relative shadow-inner">
-              {envInfo.has_gif ? (
+              {envInfo.has_gif && envInfo.gif_url ? (
                 <img
-                  src={`http://localhost:8000${envInfo.gif_url}`}
+                  src={`${import.meta.env.BASE_URL}${envInfo.gif_url}`}
                   alt={envInfo.name}
                   className="h-full w-full object-contain"
                 />

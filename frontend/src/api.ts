@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:8000/api';
+// GitHub Pages usually hosts at a subpath, use Vite's BASE_URL
+const API_BASE = import.meta.env.BASE_URL + 'api';
 
 export interface RunConfig {
   model?: string;
@@ -41,14 +42,14 @@ export const clearApiCache = () => {
 
 export const fetchAppConfig = async () => {
   if (!configCache) {
-    configCache = axios.get(`${API_BASE}/config`).then(res => res.data);
+    configCache = axios.get(`${API_BASE}/config.json`).then(res => res.data);
   }
   return configCache;
 };
 
 export const fetchRuns = async (forceRefresh = false): Promise<RunInfo[]> => {
   if (!runsCache || forceRefresh) {
-    runsCache = axios.get(`${API_BASE}/runs`).then(res => res.data);
+    runsCache = axios.get(`${API_BASE}/runs.json`).then(res => res.data);
   }
   return runsCache;
 };
@@ -75,26 +76,36 @@ export interface EnvironmentInfo {
 
 export const fetchEnvironments = async (): Promise<EnvironmentInfo[]> => {
   if (!environmentsCache) {
-    environmentsCache = axios.get(`${API_BASE}/environments`).then(res => res.data.environments);
+    environmentsCache = axios.get(`${API_BASE}/environments.json`).then(res => res.data.environments);
   }
   return environmentsCache;
 };
 
 export const fetchEnvironmentById = async (envId: string): Promise<EnvironmentInfo> => {
-  const response = await axios.get(`${API_BASE}/environments/${encodeURIComponent(envId)}`);
-  return response.data;
+  const envs = await fetchEnvironments();
+  const env = envs.find(e => e.id.toLowerCase() === envId.replace('-', '_').toLowerCase() || e.name.toLowerCase() === envId.replace('-', '_').toLowerCase());
+  return env || {
+    id: envId,
+    name: envId.replace("_", " "),
+    category: "Atari",
+    status: "🥇",
+    mods_count: 0,
+    has_gif: false,
+    gif_url: null
+  };
 };
 
 export const fetchBaselines = async (): Promise<BaselineInfo[]> => {
   if (!baselinesCache) {
-    baselinesCache = axios.get(`${API_BASE}/baselines`).then(res => res.data.data);
+    baselinesCache = axios.get(`${API_BASE}/baselines.json`).then(res => res.data.data);
   }
   return baselinesCache;
 };
 
 export const fetchRunMetrics = async (runId: string) => {
   if (!metricsCacheMap.has(runId)) {
-    const p = axios.get(`${API_BASE}/runs/${encodeURIComponent(runId)}/metrics`).then(res => res.data.data);
+    const safeId = runId.replace(/::/g, '__');
+    const p = axios.get(`${API_BASE}/runs/${encodeURIComponent(safeId)}/metrics.json`).then(res => res.data.data);
     metricsCacheMap.set(runId, p);
   }
   return metricsCacheMap.get(runId)!;
@@ -102,21 +113,20 @@ export const fetchRunMetrics = async (runId: string) => {
 
 export const fetchComparisonSummary = async () => {
   if (!summaryCache) {
-    summaryCache = axios.get(`${API_BASE}/comparison_summary`).then(res => res.data.summary);
+    summaryCache = axios.get(`${API_BASE}/comparison_summary.json`).then(res => res.data.summary);
   }
   return summaryCache;
 };
 
 export const fetchGameMetadata = async (): Promise<Record<string, { category: string; status: string }>> => {
   if (!metadataCache) {
-    metadataCache = axios.get(`${API_BASE}/game_metadata`).then(res => res.data);
+    metadataCache = axios.get(`${API_BASE}/game_metadata.json`).then(res => res.data);
   }
   return metadataCache;
 };
 
-export const fetchRunLogs = async (runId: string) => {
-  const response = await axios.get(`${API_BASE}/runs/${encodeURIComponent(runId)}/logs`);
-  return response.data.logs;
+export const fetchRunLogs = async (_runId: string) => {
+  return "Logs are disabled for the static GitHub Pages version to save space.";
 };
 
 export interface VideoStatus {
@@ -128,12 +138,13 @@ export interface VideoStatus {
   error?: string | null;
 }
 
-export const renderRunVideo = async (runId: string, iter: number = 0, force: boolean = false) => {
-  const response = await axios.post(`${API_BASE}/runs/${encodeURIComponent(runId)}/render?iter=${iter}&force=${force}`);
-  return response.data.video_url;
+export const renderRunVideo = async (_runId: string, _iter: number = 0, _force: boolean = false) => {
+  throw new Error("Rendering videos is not supported on the static version.");
 };
 
-export const checkRunVideo = async (runId: string, iter: number = 0): Promise<VideoStatus> => {
-  const response = await axios.get(`${API_BASE}/runs/${encodeURIComponent(runId)}/video_status?iter=${iter}`);
-  return response.data;
+export const checkRunVideo = async (_runId: string, _iter: number = 0): Promise<VideoStatus> => {
+  return {
+    exists: false,
+    video_url: null
+  };
 };

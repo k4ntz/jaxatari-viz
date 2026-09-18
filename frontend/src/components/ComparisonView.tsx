@@ -319,7 +319,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
     }
     if (groupKey === 'sigma0') return config.sigma0 ?? 'N/A';
     const val = config[groupKey];
-    if (val === undefined && groupKey === 'method') return 'LeGPS';
+    if (val === undefined && groupKey === 'method') return 'Unknown';
     return val ?? 'N/A';
   };
 
@@ -337,7 +337,6 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
   ];
 
   const FIXED_ALGO_COLORS: Record<string, string> = {
-    'legps': '#818cf8',               // Indigo for LeGPS
     'ppo': '#34d399',                 // Emerald for PPO
     'jaxatari: ppo (pixels)': '#34d399', // Emerald
     'ale: ppo (pixels)': '#60a5fa',      // Bright Sky Blue
@@ -441,7 +440,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
     
     gameRuns.forEach(runId => {
       const cfg = runInfos[runId]?.config || summaryMap[runId]?.config || {};
-      const method = cfg.method || (cfg.algorithm ? String(cfg.algorithm).toUpperCase() : 'LeGPS');
+      const method = cfg.method || (cfg.algorithm ? String(cfg.algorithm).toUpperCase() : 'Unknown');
       
       let rawGroupName = method;
       if (compareTab === 'vs_ale') {
@@ -517,7 +516,7 @@ const ComparisonView: React.FC<ComparisonProps> = ({ selectedRuns, setSelectedRu
         if (obsTypeFilter && obs !== obsTypeFilter) return;
 
         const cfg = runInfos[runId]?.config || summaryMap[runId]?.config || {};
-        const method = cfg.method || (cfg.algorithm ? String(cfg.algorithm).toUpperCase() : 'LeGPS');
+        const method = cfg.method || (cfg.algorithm ? String(cfg.algorithm).toUpperCase() : 'Unknown');
         
         let rawGroupName = method;
         if (compareTab === 'vs_ale') {

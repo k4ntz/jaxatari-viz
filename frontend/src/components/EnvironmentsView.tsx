@@ -187,9 +187,9 @@ const EnvironmentsView: React.FC = () => {
               >
                 {/* GIF Preview Header or Placeholder */}
                 <div className="w-full h-36 bg-[#0f111a] border border-[#2e334d] rounded-xl overflow-hidden flex items-center justify-center relative group-hover:border-indigo-500/30 transition-colors">
-                  {env.has_gif ? (
+                  {env.has_gif && env.gif_url ? (
                     <img 
-                      src={`http://localhost:8000${env.gif_url}`} 
+                      src={`${import.meta.env.BASE_URL}${env.gif_url}`} 
                       alt={env.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       loading="lazy"

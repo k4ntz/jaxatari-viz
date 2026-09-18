@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Activity, BarChart2, FileText, Moon, Sun, Gamepad2, Code2, BookOpen, ExternalLink, ChevronDown, Layers } from 'lucide-react';
+import { Activity, BarChart2, Moon, Sun, Gamepad2, Code2, BookOpen, ExternalLink, ChevronDown, Layers } from 'lucide-react';
 
 interface SidebarProps {
   theme?: string;
@@ -105,11 +105,6 @@ const Sidebar: React.FC<SidebarProps> = ({ theme = 'light', toggleTheme }) => {
               </div>
             )}
           </div>
-
-          <NavLink to="/logs" className={({isActive}) => `sidebar-link ${isActive ? 'active' : ''}`}>
-            <FileText className="w-5 h-5" />
-            <span>Logs Explorer</span>
-          </NavLink>
         </nav>
       </div>
 

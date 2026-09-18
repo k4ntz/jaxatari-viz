@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { fetchRunMetrics, fetchRunLogs, fetchRuns, type RunInfo } from '../api';
 import { ArrowLeft } from 'lucide-react';
-import { DefaultRunDetails, BlendRLRunDetails, LeGPSRunDetails } from './run_details';
+import { DefaultRunDetails, BlendRLRunDetails } from './run_details';
 
 const RunDetails: React.FC = () => {
   const { runId } = useParams<{ runId: string }>();
@@ -53,11 +53,6 @@ const RunDetails: React.FC = () => {
 
   const methodStr = String(runInfo.config?.method || runInfo.config?.raw_alg || runInfo.config?.model || runInfo.project_name || '').toLowerCase();
   const idStr = runInfo.id.toLowerCase();
-
-  // Route to specialized viewer depending on algorithm family:
-  if (methodStr.includes('legps') || methodStr.includes('cma') || idStr.includes('legps')) {
-    return <LeGPSRunDetails runInfo={runInfo} metrics={metrics} logs={logs} />;
-  }
 
   if (methodStr.includes('blend') || idStr.includes('blend')) {
     return <BlendRLRunDetails runInfo={runInfo} metrics={metrics} logs={logs} />;
