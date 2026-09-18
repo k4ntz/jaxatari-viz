@@ -1,81 +1,58 @@
 # JAXAtari-Viz
 
-An extensible, web-based visualization dashboard and experiment tracker for JAXAtari and Reinforcement Learning / Evolutionary algorithms (DQN, PPO, CMA-ES, LLM policies, etc.).
+An extensible, web-based visualization dashboard and experiment tracker for JAXAtari and Reinforcement Learning / Evolutionary algorithms. 
+
+This repository has been refactored into a **purely static single-page application (SPA)**. All dynamic python backend features have been stripped out and pre-computed into static JSON files to allow seamless, zero-cost hosting on GitHub Pages.
 
 ## Features
-- **Multi-Project Support**: Monitor and compare experiment runs across multiple repository directories from a single unified interface.
-- **Pluggable Adapter System**: Ingest custom metrics (`jsonl`, `json`) and logs seamlessly.
-- **Interactive Plotly Visualizations**: Progress curves, game score benchmarking against PPO/DQN/Human baselines, and logs exploration.
+- **Fully Static**: Runs entirely in the browser with no backend server required.
+- **Interactive Plotly Visualizations**: Progress curves, game score benchmarking against PPO/DQN/Human baselines.
+- **Environment Previews**: Animated previews of Atari 2600 game environments.
 - **Dark/Light Theme**: Built with React, Vite, TypeScript, and pure CSS design tokens.
+- **GitHub Pages Ready**: Optimized for fast static deployment out of the box.
 
 ---
 
 ## Directory Architecture
 ```
 jaxatari-viz/
-├── config.yaml          # Multi-project directory and adapter settings
-├── backend/             # FastAPI backend server
-│   ├── main.py          # API endpoints & config loader
-│   └── adapters.py      # Pluggable metric & log parser adapters
-└── frontend/            # React + Vite + TypeScript frontend
+├── .github/workflows/   # CI/CD deployment pipeline for GitHub pages
+├── frontend/            # React + Vite + TypeScript frontend
+│   ├── public/api/      # Pre-exported static JSON data & GIFs
+│   ├── src/             # React application source code
+│   └── dist/            # Built production static site
 ```
 
 ---
 
-## Quick Start
+## Quick Start (Local Development)
 
 ### 1. Install Dependencies
-Make sure you have Python (>= 3.10) and Node.js installed.
+Make sure you have [Node.js](https://nodejs.org/) installed.
 
-**Backend Setup:**
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-> **Note on Video Rendering:** Generating rollout videos requires `jax`, `jaxlib`, and `ffmpeg` (or `imageio`). The backend will automatically detect and use the target repository's virtual environment (e.g. `thesis/.venv`) if present, or fallback to the active environment running `jaxatari-viz`.
-
-**Frontend Setup:**
 ```bash
 cd frontend
 npm install
 ```
 
----
+### 2. Local Preview
+You can run the application locally to test the UI using the pre-exported static data.
 
-### 2. Configure Your Projects (`config.yaml`)
-Edit `config.yaml` to point to the run folders of your projects:
-
-```yaml
-projects:
-  - name: "Thesis Policy Search"
-    runs_dir: "/path/to/thesis/runs"
-    adapter: "cma_jsonl"
-    baselines_file: "/path/to/thesis/data/baselines.csv"
-
-  - name: "JAXAtari DQN"
-    runs_dir: "/path/to/dqn/runs"
-    adapter: "standard_json"
-
-server:
-  host: "0.0.0.0"
-  port: 8000
-```
-
----
-
-### 3. Launch `jaxatari-viz`
-
-**Start Backend:**
+**Start the Vite Development Server:**
 ```bash
-python -m uvicorn backend.main:app --reload --port 8000
-```
-
-**Start Frontend:**
-```bash
-cd frontend
 npm run dev
 ```
 
-Open your browser at [http://localhost:5173](http://localhost:5173).
+Alternatively, to test the exact production build:
+```bash
+npm run build
+npm run preview
+```
+
+Open your browser at [http://localhost:5173](http://localhost:5173) (or the port specified by Vite).
+
+---
+
+## Deployment
+
+This dashboard is designed to be hosted seamlessly on GitHub Pages. For detailed, step-by-step instructions on how to deploy this static site, please refer to [README_DEPLOY.md](README_DEPLOY.md).
